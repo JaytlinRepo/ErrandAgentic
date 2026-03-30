@@ -1,0 +1,19 @@
+# Core app
+streamlit>=1.28.0
+ollama>=0.3.0
+
+# Agent + LLM (pin versions as you stabilize)
+# langchain>=0.2.0
+# langchain-openai
+
+# RAG
+# chromadb>=0.4.0
+# sentence-transformers>=2.2.0
+
+# APIs
+# googlemaps
+# httpx
+
+# Dev
+# pytest>=7.0.0
+# ruff

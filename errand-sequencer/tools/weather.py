@@ -1,0 +1,1 @@
+"""Open-Meteo API integration."""

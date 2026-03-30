@@ -1,0 +1,22 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Local data and model artifacts
+data/chroma_db/*
+!data/chroma_db/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+models/fine_tuned/*
+!models/fine_tuned/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/

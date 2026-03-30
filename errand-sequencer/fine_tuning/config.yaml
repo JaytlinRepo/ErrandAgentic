@@ -1,0 +1,5 @@
+# Training hyperparameters (fill in before runs)
+model_name_or_path: ""
+output_dir: "../models/fine_tuned"
+learning_rate: 2.0e-4
+num_train_epochs: 3
