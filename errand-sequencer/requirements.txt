@@ -1,18 +1,19 @@
 # Core app
 streamlit>=1.28.0
 ollama>=0.3.0
+python-dotenv>=1.0.0
+httpx>=0.27.0
 
-# Agent + LLM (pin versions as you stabilize)
-# langchain>=0.2.0
-# langchain-openai
+# Agent + tool calling (Ollama)
+langchain-core>=0.3.0
+langchain-ollama>=0.2.0
 
 # RAG
 # chromadb>=0.4.0
 # sentence-transformers>=2.2.0
 
-# APIs
+# APIs (optional client libs — we use httpx for Google REST)
 # googlemaps
-# httpx
 
 # Dev
 # pytest>=7.0.0

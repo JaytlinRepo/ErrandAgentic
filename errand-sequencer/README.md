@@ -20,6 +20,12 @@ Agentic errand sequencing with a Streamlit UI, RAG, and optional fine-tuning.
 
    Optional: copy `.env` and set `OLLAMA_HOST` / `OLLAMA_MODEL` if you use a non-default host or tag.
 
+3. **Google Maps** (for LangChain tools: `get_hours`, `get_travel_time`, `get_directions`) — In [Google Cloud Console](https://console.cloud.google.com/apis/library), enable **Places API (New)**, **Distance Matrix API**, and **Directions API** on the project tied to your key. Billing must be on. Add to `.env` as a live line (no `#`):
+
+   ```
+   GOOGLE_MAPS_API_KEY=your_key_here
+   ```
+
 ## Run the app
 
 ```bash
