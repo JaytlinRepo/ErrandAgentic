@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from urllib.parse import urlencode
 
 import httpx
@@ -43,18 +44,75 @@ def _describe_code(code: int | None) -> str:
     return _WMO.get(int(code), f"code {code}")
 
 
+def _geocode_search(client: httpx.Client, name: str, **extra: str | int) -> list:
+    params: dict[str, str | int] = {
+        "name": name,
+        "count": 5,
+        "language": "en",
+        "format": "json",
+    }
+    params.update(extra)
+    r = client.get(f"{GEOCODE_URL}?{urlencode(params)}")
+    r.raise_for_status()
+    return r.json().get("results") or []
+
+
+def _resolve_location(client: httpx.Client, location: str) -> list:
+    """Open-Meteo geocode with US city+state disambiguation (API uses countryCode)."""
+    results = _geocode_search(client, location)
+    if results:
+        return results
+
+    lo = location.lower()
+    us_trailing_state = re.search(
+        r",?\s*(massachusetts|connecticut|new\s+york|california|texas)\s*$", lo
+    )
+    if us_trailing_state:
+        city = re.sub(
+            r",?\s*(massachusetts|connecticut|new\s+york|california|texas)\s*$",
+            "",
+            location,
+            count=1,
+            flags=re.I,
+        ).strip(" ,")
+        if city:
+            results = _geocode_search(client, city, countryCode="US")
+            if results:
+                return results
+
+    if re.search(r",?\s*ma\s*$", lo) or "massachusetts" in lo:
+        city = re.sub(r",?\s*(massachusetts|ma)\s*$", "", location, flags=re.I).strip(" ,")
+        if city:
+            results = _geocode_search(client, city, countryCode="US")
+            if results:
+                return results
+
+    first = location.split(",")[0].strip()
+    if first and first != location:
+        results = _geocode_search(client, first, countryCode="US")
+        if results:
+            return results
+
+    if re.search(r"\b(usa|u\.s\.|united states)\b", lo):
+        shorter = re.sub(
+            r",?\s*(usa|u\.s\.a?\.?|united states)\s*$", "", location, flags=re.I
+        ).strip(" ,")
+        if shorter:
+            r_us = _geocode_search(client, shorter, countryCode="US")
+            if r_us:
+                return r_us
+
+    return []
+
+
 def get_weather_impl(location: str) -> str:
     """Current conditions for a city or region name."""
     location = (location or "").strip()
     if not location:
         return "No location provided."
 
-    params = {"name": location, "count": 1, "language": "en", "format": "json"}
     with http_client() as c:
-        r = c.get(f"{GEOCODE_URL}?{urlencode(params)}")
-        r.raise_for_status()
-        geo = r.json()
-    results = geo.get("results") or []
+        results = _resolve_location(c, location)
     if not results:
         return f"No geographic match for «{location}»."
 

@@ -15,6 +15,12 @@ def test_get_weather_returns_summary():
     assert "Paris" in text or "France" in text or "°C" in text or "Clear" in text or "cloud" in text.lower()
 
 
+def test_get_weather_cambridge_massachusetts():
+    text = get_weather_impl("Cambridge Massachusetts")
+    assert "No geographic match" not in text
+    assert "°C" in text or "Temperature" in text
+
+
 @pytest.mark.skipif(not os.getenv("GOOGLE_MAPS_API_KEY"), reason="GOOGLE_MAPS_API_KEY not set")
 def test_get_travel_time_matrix():
     from tools.maps import get_travel_time_impl

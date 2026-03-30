@@ -62,6 +62,47 @@ def find_place_id(
             c.close()
 
 
+def _parse_latlon(value: str) -> tuple[float, float] | None:
+    m = re.match(r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$", value or "")
+    if not m:
+        return None
+    return float(m.group(1)), float(m.group(2))
+
+
+def _resolve_text_place_to_address(
+    query: str,
+    *,
+    client: httpx.Client,
+    origin_bias: tuple[float, float] | None = None,
+) -> tuple[str | None, str | None]:
+    """Resolve a fuzzy place string to a concrete formatted address."""
+    body: dict = {"textQuery": query}
+    if origin_bias is not None:
+        lat, lon = origin_bias
+        body["locationBias"] = {
+            "circle": {
+                "center": {"latitude": lat, "longitude": lon},
+                "radius": 25000.0,
+            }
+        }
+    r = client.post(
+        PLACES_SEARCH_TEXT_URL,
+        headers=_places_v1_headers("places.formattedAddress,places.displayName"),
+        json=body,
+    )
+    if r.status_code != 200:
+        try:
+            msg = r.json().get("error", {}).get("message", r.text)
+        except Exception:
+            msg = r.text
+        return None, f"Places resolve error: HTTP {r.status_code} {msg}"
+    places = r.json().get("places") or []
+    if not places:
+        return None, None
+    p0 = places[0]
+    return p0.get("formattedAddress"), None
+
+
 def place_details_v1(
     place_id: str, *, client: httpx.Client
 ) -> tuple[dict | None, str | None]:
@@ -91,6 +132,8 @@ def get_travel_time_impl(origin: str, destination: str, mode: str = "driving") -
     allowed = {"driving", "walking", "bicycling", "transit"}
     if mode not in allowed:
         mode = "driving"
+    origin_in = origin
+    destination_in = destination
     params = {
         "origins": origin,
         "destinations": destination,
@@ -114,7 +157,49 @@ def get_travel_time_impl(origin: str, destination: str, mode: str = "driving") -
     el = elems[0]
     es = el.get("status")
     if es != "OK":
-        return f"Route element status: {es}"
+        # Fallback: brand-only names (e.g. "Walmart") often fail in Distance Matrix.
+        # Resolve via Places Search Text, then retry with concrete addresses.
+        with http_client() as c:
+            bias = _parse_latlon(origin_in)
+            resolved_origin = origin_in
+            resolved_dest = destination_in
+            if bias is None:
+                ro, err = _resolve_text_place_to_address(origin_in, client=c, origin_bias=None)
+                if err:
+                    return err
+                if ro:
+                    resolved_origin = ro
+                    bias = _parse_latlon(resolved_origin)
+            rd, err = _resolve_text_place_to_address(destination_in, client=c, origin_bias=bias)
+            if err:
+                return err
+            if rd:
+                resolved_dest = rd
+            retry_params = {
+                "origins": resolved_origin,
+                "destinations": resolved_dest,
+                "mode": mode,
+                "units": "metric",
+                "key": maps_api_key(),
+            }
+            rr = c.get(f"{DISTANCE_MATRIX_URL}?{urlencode(retry_params)}")
+            rr.raise_for_status()
+            retry = rr.json()
+        if retry.get("status") != "OK":
+            return f"Route element status: {es}"
+        r_rows = retry.get("rows") or []
+        if not r_rows or not (r_rows[0].get("elements") or []):
+            return f"Route element status: {es}"
+        r_el = r_rows[0]["elements"][0]
+        if r_el.get("status") != "OK":
+            return f"Route element status: {es}"
+        dur = r_el.get("duration", {}).get("text", "?")
+        dist = r_el.get("distance", {}).get("text", "?")
+        return (
+            f"From «{origin_in}» to «{destination_in}» via {mode}: about {dur} ({dist}). "
+            f"Resolved as: {retry.get('origin_addresses', ['?'])[0]} → "
+            f"{retry.get('destination_addresses', ['?'])[0]}."
+        )
     dur = el.get("duration", {}).get("text", "?")
     dist = el.get("distance", {}).get("text", "?")
     return (
