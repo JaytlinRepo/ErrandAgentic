@@ -16,15 +16,17 @@ from agent.ollama_client import generate_errand_response
 from agent.orchestrator import run_errand_agent_with_tools
 from app.components.errand_input import errand_text_area
 from configs.settings import OLLAMA_HOST, OLLAMA_MODEL
-
-def _with_start_location_context(errands: str, location_note: str | None) -> str:
-    if not location_note:
-        return errands
-    return (
-        f"Starting location context for routing: {location_note}\n\n"
-        "Use this as the starting point when estimating travel efficiency.\n\n"
-        f"Errands:\n{errands}"
-    )
+from guardrails import (
+    extract_errand_lines,
+    is_food_place,
+    wants_eat_last,
+    with_current_time_context,
+    with_eat_last_guardrail_context,
+    with_food_preference_context,
+    with_planned_order_context,
+    with_start_location_context,
+    with_unique_stop_constraint,
+)
 
 
 def main() -> None:
@@ -104,10 +106,37 @@ def main() -> None:
         )
 
     errands = errand_text_area()
+    errand_lines = extract_errand_lines(errands)
+    food_candidates = [line for line in errand_lines if is_food_place(line)]
+    eat_last = wants_eat_last(errands)
+    last_food_place: str | None = None
+    if eat_last and len(food_candidates) == 1:
+        # One clear food stop: enforce it as last automatically.
+        last_food_place = food_candidates[0]
+        st.info(f'Applying preference: "{last_food_place}" will be the final stop.')
+    elif eat_last and len(food_candidates) >= 2:
+        st.info("You listed multiple food places and said you want to eat last.")
+        last_food_place = st.selectbox(
+            "Which food place should be last?",
+            options=food_candidates,
+            help="This is enforced as a hard preference in the planning prompt.",
+        )
+    elif eat_last and len(food_candidates) == 0:
+        st.warning(
+            "No restaurant/food stop detected in the errand list. "
+            "Add one (e.g. McDonalds) if you want 'eat last' enforced."
+        )
     submit = st.button("Get suggestions", type="primary", disabled=not errands.strip())
 
     if submit:
-        prompt_text = _with_start_location_context(errands, starting_location_note)
+        prompt_text = with_start_location_context(errands, starting_location_note)
+        prompt_text = with_food_preference_context(prompt_text, last_food_place)
+        prompt_text = with_unique_stop_constraint(prompt_text, errand_lines)
+        prompt_text = with_planned_order_context(prompt_text, errand_lines, last_food_place)
+        prompt_text = with_eat_last_guardrail_context(
+            prompt_text, wants_eat_last=eat_last, food_candidates=food_candidates
+        )
+        prompt_text = with_current_time_context(prompt_text)
         label = f"Asking `{model}` with tools…" if use_tools else f"Asking `{model}`…"
         with st.spinner(label):
             try:

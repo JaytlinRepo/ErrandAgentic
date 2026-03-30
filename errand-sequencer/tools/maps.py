@@ -219,6 +219,8 @@ def get_directions_impl(origin: str, destination: str, mode: str = "driving") ->
     allowed = {"driving", "walking", "bicycling", "transit"}
     if mode not in allowed:
         mode = "driving"
+    origin_in = origin
+    destination_in = destination
     params = {
         "origin": origin,
         "destination": destination,
@@ -232,7 +234,36 @@ def get_directions_impl(origin: str, destination: str, mode: str = "driving") ->
         data = r.json()
     status = data.get("status")
     if status != "OK":
-        return f"Directions error: {status} {data.get('error_message', '')}"
+        # Fallback for fuzzy/brand-only names by resolving to concrete addresses first.
+        with http_client() as c:
+            bias = _parse_latlon(origin_in)
+            resolved_origin = origin_in
+            resolved_dest = destination_in
+            if bias is None:
+                ro, err = _resolve_text_place_to_address(origin_in, client=c, origin_bias=None)
+                if err:
+                    return err
+                if ro:
+                    resolved_origin = ro
+                    bias = _parse_latlon(resolved_origin)
+            rd, err = _resolve_text_place_to_address(destination_in, client=c, origin_bias=bias)
+            if err:
+                return err
+            if rd:
+                resolved_dest = rd
+            retry_params = {
+                "origin": resolved_origin,
+                "destination": resolved_dest,
+                "mode": mode,
+                "units": "metric",
+                "key": maps_api_key(),
+            }
+            rr = c.get(f"{DIRECTIONS_URL}?{urlencode(retry_params)}")
+            rr.raise_for_status()
+            retry = rr.json()
+        if retry.get("status") != "OK":
+            return f"Directions error: {status} {data.get('error_message', '')}"
+        data = retry
     routes = data.get("routes") or []
     if not routes:
         return "No routes returned."
