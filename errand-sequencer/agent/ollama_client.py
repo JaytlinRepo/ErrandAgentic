@@ -11,12 +11,19 @@ Be concise. When the user lists errands, acknowledge them and suggest a sensible
 next steps in plain language. If the list is empty, ask them to add errands."""
 
 
-def generate_errand_response(errand_list: str, *, model: str | None = None) -> str:
+def generate_errand_response(
+    errand_list: str,
+    *,
+    model: str | None = None,
+    history_transcript: str = "",
+) -> str:
     """Send errands to the local LLM and return the assistant reply."""
     model = model or OLLAMA_MODEL
     client = ollama.Client(host=OLLAMA_HOST)
     text = errand_list.strip() if errand_list else ""
     user_msg = "My errands:\n" + text if text else "I have not listed any errands yet."
+    if (history_transcript or "").strip():
+        user_msg = f"Prior conversation:\n{history_transcript.strip()}\n\n{user_msg}"
     resp = client.chat(
         model=model,
         messages=[

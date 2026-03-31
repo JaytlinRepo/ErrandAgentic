@@ -80,8 +80,16 @@ def with_eat_last_guardrail_context(
 def with_current_time_context(errands: str) -> str:
     now = datetime.now().astimezone()
     time_line = now.strftime("%Y-%m-%d %I:%M %p %Z")
+    iso = now.isoformat(timespec="seconds")
     return (
-        f"Current local time at request: {time_line}\n"
-        "Use this timestamp to estimate stop start times and arrivals.\n\n"
+        f"Current local time at request: {time_line} (ISO: {iso})\n"
+        "Scheduling rules (follow exactly):\n"
+        "- **Now** is the moment this request was sent. Treat it as the earliest realistic time the user can "
+        "leave the starting location.\n"
+        "- Do **not** propose any **departure** or **arrival** time **earlier** than that clock time (no "
+        "“start at 9:00 PM” if the current time is already 9:14 PM).\n"
+        "- You **may** propose a **later** departure or arrival when justified (heavy traffic, peak hours, "
+        "store not yet open, buffer time)—say why.\n"
+        "- Build arrival windows forward from **now** plus travel times from tools.\n\n"
         f"{errands}"
     )

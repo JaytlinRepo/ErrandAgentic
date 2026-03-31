@@ -9,8 +9,8 @@ langchain-core>=0.3.0
 langchain-ollama>=0.2.0
 
 # RAG
-# chromadb>=0.4.0
-# sentence-transformers>=2.2.0
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
 
 # APIs (optional client libs — we use httpx for Google REST)
 # googlemaps

@@ -20,6 +20,11 @@ def get_travel_time(origin: str, destination: str, mode: str = "driving") -> str
         destination: End address or place description.
         mode: One of: driving, walking, bicycling, transit. Defaults to driving.
     """
+    if not (origin or "").strip():
+        return (
+            "get_travel_time: missing origin. Use the user's Starting location context for routing "
+            "(coordinates or address) as origin, or ask the user for a start point."
+        )
     try:
         return get_travel_time_impl(origin, destination, mode)
     except Exception as e:
@@ -37,6 +42,11 @@ def get_directions(origin: str, destination: str, mode: str = "driving") -> str:
         destination: End address or place description.
         mode: One of: driving, walking, bicycling, transit. Defaults to driving.
     """
+    if not (origin or "").strip():
+        return (
+            "get_directions: missing origin. Use the user's Starting location context for routing "
+            "(coordinates or address) as origin, or ask the user for a start point."
+        )
     try:
         return get_directions_impl(origin, destination, mode)
     except Exception as e:
@@ -53,6 +63,11 @@ def get_hours(place_query: str) -> str:
     Args:
         place_query: Business name, chain + area, or street address.
     """
+    if not (place_query or "").strip():
+        return (
+            "get_hours: missing place_query. Pass a non-empty store name with area or address "
+            '(e.g. \"Trader Joe Cambridge MA\" or a full address).'
+        )
     try:
         return get_hours_impl(place_query)
     except Exception as e:
@@ -68,6 +83,11 @@ def get_weather(location: str) -> str:
     Args:
         location: City or region name, e.g. 'Seattle', 'Austin TX'.
     """
+    if not (location or "").strip():
+        return (
+            "get_weather: missing location. Pass a city/region or reuse coordinates from the user's "
+            "Starting location context when inferring weather."
+        )
     try:
         return get_weather_impl(location)
     except Exception as e:

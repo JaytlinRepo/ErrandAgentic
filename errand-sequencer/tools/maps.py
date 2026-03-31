@@ -32,6 +32,7 @@ def find_place_id(
     query = (query or "").strip()
     if not query:
         return None, None, None
+    query = normalize_place_search_query(query)
 
     own_client = client is None
     c = client or http_client()
@@ -69,6 +70,54 @@ def _parse_latlon(value: str) -> tuple[float, float] | None:
     return float(m.group(1)), float(m.group(2))
 
 
+def normalize_place_search_query(query: str) -> str:
+    """Expand bare retail brands so Places searchText returns a real store near the user.
+
+    Single-word queries like \"target\" often match nothing; \"Target store\" works with location bias.
+    """
+    q = (query or "").strip()
+    if not q or _parse_latlon(q):
+        return q
+    key = re.sub(r"\s+", " ", q).strip().lower().rstrip(".")
+    phrases = {
+        "cold stone": "Cold Stone Creamery",
+        "coldstone": "Cold Stone Creamery",
+        "whole foods": "Whole Foods Market",
+        "trader joes": "Trader Joe's",
+        "trader joe's": "Trader Joe's",
+    }
+    if key in phrases:
+        return phrases[key]
+    if " " in key:
+        return q
+    if key in ("home", "work", "here"):
+        return q
+    single = {
+        "target": "Target store",
+        "walmart": "Walmart",
+        "walgreens": "Walgreens",
+        "cvs": "CVS Pharmacy",
+        "costco": "Costco Wholesale",
+        "kroger": "Kroger",
+        "safeway": "Safeway",
+        "aldi": "Aldi",
+        "publix": "Publix",
+        "chipotle": "Chipotle",
+        "starbucks": "Starbucks",
+        "ross": "Ross Dress for Less",
+    }
+    if key in single:
+        return single[key]
+    return q
+
+
+def _maybe_normalize_endpoint(loc: str) -> str:
+    s = (loc or "").strip()
+    if not s or _parse_latlon(s):
+        return s
+    return normalize_place_search_query(s)
+
+
 def _resolve_text_place_to_address(
     query: str,
     *,
@@ -76,7 +125,8 @@ def _resolve_text_place_to_address(
     origin_bias: tuple[float, float] | None = None,
 ) -> tuple[str | None, str | None]:
     """Resolve a fuzzy place string to a concrete formatted address."""
-    body: dict = {"textQuery": query}
+    qn = normalize_place_search_query(query)
+    body: dict = {"textQuery": qn}
     if origin_bias is not None:
         lat, lon = origin_bias
         body["locationBias"] = {
@@ -132,11 +182,11 @@ def get_travel_time_impl(origin: str, destination: str, mode: str = "driving") -
     allowed = {"driving", "walking", "bicycling", "transit"}
     if mode not in allowed:
         mode = "driving"
-    origin_in = origin
-    destination_in = destination
+    origin_in = _maybe_normalize_endpoint(origin)
+    destination_in = _maybe_normalize_endpoint(destination)
     params = {
-        "origins": origin,
-        "destinations": destination,
+        "origins": origin_in,
+        "destinations": destination_in,
         "mode": mode,
         "units": "metric",
         "key": maps_api_key(),
@@ -219,11 +269,11 @@ def get_directions_impl(origin: str, destination: str, mode: str = "driving") ->
     allowed = {"driving", "walking", "bicycling", "transit"}
     if mode not in allowed:
         mode = "driving"
-    origin_in = origin
-    destination_in = destination
+    origin_in = _maybe_normalize_endpoint(origin)
+    destination_in = _maybe_normalize_endpoint(destination)
     params = {
-        "origin": origin,
-        "destination": destination,
+        "origin": origin_in,
+        "destination": destination_in,
         "mode": mode,
         "units": "metric",
         "key": maps_api_key(),
