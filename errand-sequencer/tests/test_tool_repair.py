@@ -24,6 +24,19 @@ def test_inject_origin():
     assert out["origin"] == "33, -84"
 
 
+def test_inject_origin_force_first_leg_overwrites_wrong_origin():
+    args = {"origin": "Waffle House", "destination": "Walmart", "mode": "driving"}
+    out = inject_routing_origin("get_directions", args, "33.5, -84.3", force_first_leg=True)
+    assert out["origin"] == "33.5, -84.3"
+    assert out["destination"] == "Walmart"
+
+
+def test_inject_origin_second_leg_keeps_model_origin():
+    args = {"origin": "Waffle House", "destination": "Walmart", "mode": "driving"}
+    out = inject_routing_origin("get_directions", args, "33.5, -84.3", force_first_leg=False)
+    assert out["origin"] == "Waffle House"
+
+
 def test_extract_embedded_tool_calls():
     text = (
         'Since you need food.\n\n'

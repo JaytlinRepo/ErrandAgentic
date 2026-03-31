@@ -5,7 +5,11 @@ from __future__ import annotations
 from langchain_core.tools import tool
 
 from tools.hours import get_hours_impl
-from tools.maps import get_directions_impl, get_travel_time_impl
+from tools.maps import (
+    get_directions_impl,
+    get_place_address_impl,
+    get_travel_time_impl,
+)
 from tools.weather import get_weather_impl
 
 
@@ -14,6 +18,7 @@ def get_travel_time(origin: str, destination: str, mode: str = "driving") -> str
     """Estimate travel time and distance using Google Distance Matrix (fast matrix lookup).
 
     Prefer this for comparing legs or quick duration checks. For turn-by-turn outline use get_directions.
+    The returned text always ends with a **STREET_ADDRESSES** block — copy those lines into your reply.
 
     Args:
         origin: Start address or place description.
@@ -36,6 +41,7 @@ def get_directions(origin: str, destination: str, mode: str = "driving") -> str:
     """Summarized route with key steps using Google Directions API.
 
     Use when the user wants how to get from A to B, not just duration. Requires Directions API enabled.
+    The returned text ends with a **STREET_ADDRESSES** block — copy those lines into your reply.
 
     Args:
         origin: Start address or place description.
@@ -51,6 +57,28 @@ def get_directions(origin: str, destination: str, mode: str = "driving") -> str:
         return get_directions_impl(origin, destination, mode)
     except Exception as e:
         return f"get_directions failed: {e}"
+
+
+@tool
+def get_place_address(place_query: str, near_coordinates: str = "") -> str:
+    """Look up one place's formatted street address (Google Places).
+
+    Use so each errand in the final answer has a full address. Combine chain + city/state from the user's
+    errands (e.g. \"Target Austell GA\", \"Kroger Douglasville GA\").
+
+    Args:
+        place_query: Store name plus area, or a full address string.
+        near_coordinates: Optional comma-separated lat,lon from \"Starting location context for routing\"
+            so the correct nearby chain location is chosen.
+    """
+    if not (place_query or "").strip():
+        return (
+            "get_place_address: empty place_query. Pass a non-empty store + city or address."
+        )
+    try:
+        return get_place_address_impl(place_query, near_coordinates)
+    except Exception as e:
+        return f"get_place_address failed: {e}"
 
 
 @tool
@@ -94,4 +122,10 @@ def get_weather(location: str) -> str:
         return f"get_weather failed: {e}"
 
 
-ERRAND_TOOLS = [get_travel_time, get_directions, get_hours, get_weather]
+ERRAND_TOOLS = [
+    get_travel_time,
+    get_directions,
+    get_place_address,
+    get_hours,
+    get_weather,
+]

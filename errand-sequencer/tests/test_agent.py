@@ -12,7 +12,13 @@ from tools.langchain_tools import ERRAND_TOOLS
 
 def test_errand_tools_registered():
     names = {t.name for t in ERRAND_TOOLS}
-    assert names == {"get_travel_time", "get_directions", "get_hours", "get_weather"}
+    assert names == {
+        "get_travel_time",
+        "get_directions",
+        "get_place_address",
+        "get_hours",
+        "get_weather",
+    }
 
 
 @pytest.mark.skipif(os.getenv("ERRAND_AGENT_INTEGRATION") != "1", reason="Set ERRAND_AGENT_INTEGRATION=1 for live Ollama")

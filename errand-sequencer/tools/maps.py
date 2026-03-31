@@ -12,6 +12,7 @@ from tools.base import http_client, maps_api_key
 # Distance Matrix + Directions (classic endpoints; enable both in Cloud Console)
 DISTANCE_MATRIX_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
 DIRECTIONS_URL = "https://maps.googleapis.com/maps/api/directions/json"
+GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 
 # Places API (New) — use when legacy Places is disabled on the GCP project
 PLACES_SEARCH_TEXT_URL = "https://places.googleapis.com/v1/places:searchText"
@@ -70,6 +71,29 @@ def _parse_latlon(value: str) -> tuple[float, float] | None:
     return float(m.group(1)), float(m.group(2))
 
 
+def reverse_geocode_latlon(lat: float, lon: float) -> str | None:
+    """Return a formatted street address for coordinates, or None if lookup fails.
+
+    Uses the Geocoding API (same key as other Maps endpoints). Enable **Geocoding API**
+    in Google Cloud if requests fail.
+    """
+    params = {"latlng": f"{lat},{lon}", "key": maps_api_key()}
+    try:
+        with http_client() as c:
+            r = c.get(f"{GEOCODE_URL}?{urlencode(params)}")
+            r.raise_for_status()
+            data = r.json()
+    except Exception:
+        return None
+    if data.get("status") != "OK":
+        return None
+    results = data.get("results") or []
+    if not results:
+        return None
+    addr = results[0].get("formatted_address")
+    return addr if isinstance(addr, str) and addr.strip() else None
+
+
 def normalize_place_search_query(query: str) -> str:
     """Expand bare retail brands so Places searchText returns a real store near the user.
 
@@ -116,6 +140,48 @@ def _maybe_normalize_endpoint(loc: str) -> str:
     if not s or _parse_latlon(s):
         return s
     return normalize_place_search_query(s)
+
+
+def _streets_block(origin_resolved: str, dest_resolved: str) -> str:
+    """Machine-readable block so the agent copies full addresses into the user-facing itinerary."""
+    return (
+        "\n---\n"
+        "STREET_ADDRESSES (required — paste these two lines into your reply to the user):\n"
+        f"- Origin: {origin_resolved}\n"
+        f"- Destination: {dest_resolved}\n"
+    )
+
+
+def get_place_address_impl(place_query: str, near_coordinates: str = "") -> str:
+    """Resolve one free-text place to a formatted street address (Places searchText)."""
+    place_query = (place_query or "").strip()
+    if not place_query:
+        return "get_place_address: empty place_query."
+    bias: tuple[float, float] | None = None
+    nc = (near_coordinates or "").strip()
+    if nc:
+        parsed = _parse_latlon(nc)
+        if parsed:
+            bias = parsed
+    try:
+        with http_client() as c:
+            addr, err = _resolve_text_place_to_address(
+                place_query, client=c, origin_bias=bias
+            )
+    except Exception as e:
+        return f"get_place_address failed: {e}"
+    if err:
+        return f"get_place_address: {err}"
+    if not addr:
+        return (
+            f"get_place_address: no result for {place_query!r}. "
+            "Try chain + city + state (e.g. \"Target Austell GA\"). "
+            "If Starting location is coordinates, pass them as near_coordinates."
+        )
+    return (
+        f"Query: {place_query}\n"
+        f"STREET_ADDRESS (required — paste into your itinerary): {addr}\n"
+    )
 
 
 def _resolve_text_place_to_address(
@@ -245,18 +311,20 @@ def get_travel_time_impl(origin: str, destination: str, mode: str = "driving") -
             return f"Route element status: {es}"
         dur = r_el.get("duration", {}).get("text", "?")
         dist = r_el.get("distance", {}).get("text", "?")
+        oa = (retry.get("origin_addresses") or ["?"])[0]
+        da = (retry.get("destination_addresses") or ["?"])[0]
         return (
             f"From «{origin_in}» to «{destination_in}» via {mode}: about {dur} ({dist}). "
-            f"Resolved as: {retry.get('origin_addresses', ['?'])[0]} → "
-            f"{retry.get('destination_addresses', ['?'])[0]}."
-        )
+            f"Resolved as: {oa} → {da}."
+        ) + _streets_block(oa, da)
     dur = el.get("duration", {}).get("text", "?")
     dist = el.get("distance", {}).get("text", "?")
+    oa = (data.get("origin_addresses") or ["?"])[0]
+    da = (data.get("destination_addresses") or ["?"])[0]
     return (
         f"From «{origin}» to «{destination}» via {mode}: about {dur} ({dist}). "
-        f"API origin/dest resolved as: {data.get('origin_addresses', ['?'])[0]} → "
-        f"{data.get('destination_addresses', ['?'])[0]}."
-    )
+        f"API origin/dest resolved as: {oa} → {da}."
+    ) + _streets_block(oa, da)
 
 
 def _strip_html_instructions(html: str) -> str:
@@ -337,4 +405,5 @@ def get_directions_impl(origin: str, destination: str, mode: str = "driving") ->
             lines.append(f"  • {txt}")
     if len(steps) > 6:
         lines.append(f"  • … plus {len(steps) - 6} more steps")
-    return "\n".join(lines)
+    body = "\n".join(lines)
+    return body + _streets_block(start, end)

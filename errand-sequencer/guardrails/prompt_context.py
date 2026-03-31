@@ -5,12 +5,27 @@ from __future__ import annotations
 from datetime import datetime
 
 
-def with_start_location_context(errands: str, location_note: str | None) -> str:
+def with_start_location_context(
+    errands: str,
+    location_note: str | None,
+    *,
+    display_address: str | None = None,
+) -> str:
     if not location_note:
         return errands
+    da = (display_address or "").strip()
+    ln = (location_note or "").strip()
+    home_line = ""
+    if da and da != ln:
+        home_line = (
+            f"\nHuman-readable address for this starting point (use when the user says **home** or "
+            f"**return home**; show this full address in the itinerary for that leg): {da}\n"
+        )
     return (
-        f"Starting location context for routing: {location_note}\n\n"
-        "Use this as the starting point when estimating travel efficiency.\n\n"
+        f"Starting location context for routing: {location_note}{home_line}\n"
+        "Use this as the starting point when estimating travel efficiency. For the **first** drive leg, "
+        "routing tools must use this value as **origin** and the **first errand** as **destination** "
+        "(distance/time from your current position to your first stop—not from the first stop to the second).\n\n"
         f"Errands:\n{errands}"
     )
 
@@ -85,11 +100,17 @@ def with_current_time_context(errands: str) -> str:
         f"Current local time at request: {time_line} (ISO: {iso})\n"
         "Scheduling rules (follow exactly):\n"
         "- **Now** is the moment this request was sent. Treat it as the earliest realistic time the user can "
-        "leave the starting location.\n"
+        "leave **Current Location** (the Starting location context value).\n"
         "- Do **not** propose any **departure** or **arrival** time **earlier** than that clock time (no "
         "“start at 9:00 PM” if the current time is already 9:14 PM).\n"
+        "- **Never** write windows like **“now − 3 minutes”**, **“now minus …”**, or any phrasing that implies "
+        "arriving **before** the current time. That is invalid. Use **now**, **now + N minutes**, **in the next "
+        "N minutes**, or a **clock time on or after** the current time.\n"
+        "- First stop after leaving **Current Location** (from the context line): arrival is **no earlier "
+        "than now + travel time** for that leg. If travel time is ~0, say **now** or **upon arrival**, not a "
+        "negative offset.\n"
         "- You **may** propose a **later** departure or arrival when justified (heavy traffic, peak hours, "
         "store not yet open, buffer time)—say why.\n"
-        "- Build arrival windows forward from **now** plus travel times from tools.\n\n"
+        "- Build arrival windows **forward** from **now** plus travel times from tools.\n\n"
         f"{errands}"
     )

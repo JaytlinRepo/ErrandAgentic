@@ -83,3 +83,19 @@ def test_short_single_line_not_over_split():
     lines = extract_errand_lines("Just the post office today.")
     assert len(lines) == 1
 
+
+def test_split_target_kroger_and_home():
+    text = "I need to go to target in Austell, Kroger in Douglasville and home"
+    out = split_paragraph_into_errands(text)
+    assert len(out) == 3
+    assert "target" in out[0].lower() and "austell" in out[0].lower()
+    assert "kroger" in out[1].lower() and "douglasville" in out[1].lower()
+    assert out[2].strip().lower() == "home"
+
+
+def test_split_same_with_and_then_home():
+    text = "I need to go to target in Austell, Kroger in Douglasville and then home"
+    out = split_paragraph_into_errands(text)
+    assert len(out) == 3
+    assert out[2].strip().lower() == "home"
+

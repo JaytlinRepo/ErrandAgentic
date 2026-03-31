@@ -62,11 +62,20 @@ def inject_routing_origin(
     tool_name: str,
     args: dict[str, Any],
     default_origin: str | None,
+    *,
+    force_first_leg: bool = False,
 ) -> dict[str, Any]:
-    """Fill missing origin for Distance Matrix / Directions when the user shared a start location."""
+    """Fill or correct origin for Distance Matrix / Directions when the user shared a start location.
+
+    When ``force_first_leg`` is True, always set ``origin`` to the user's starting location. That fixes
+    models that wrongly use the first errand stop as origin for the leg from the user's actual position.
+    """
     if tool_name not in _ROUTING_TOOLS or not (default_origin or "").strip():
         return args
     out = dict(args)
+    if force_first_leg:
+        out["origin"] = default_origin.strip()
+        return out
     o = out.get("origin")
     if o is None or (isinstance(o, str) and not o.strip()):
         out["origin"] = default_origin.strip()

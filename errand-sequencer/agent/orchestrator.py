@@ -13,6 +13,8 @@ from agent.tool_repair import (
     repair_ai_message_for_embedded_tools,
     strip_leaked_tool_json,
 )
+
+_ROUTING_TOOL_NAMES = frozenset({"get_travel_time", "get_directions"})
 from agent.prompts import (
     CONVERSATION_TURN_INSTRUCTION,
     RAG_KNOWLEDGE_INSTRUCTION,
@@ -156,9 +158,16 @@ def run_errand_agent_with_tools(
     rounds = 0
     while getattr(ai, "tool_calls", None) and rounds < _MAX_TOOL_ROUNDS:
         rounds += 1
+        routing_idx = 0
         for tc in ai.tool_calls:
             name = tc.get("name")
-            args = inject_routing_origin(name, tc.get("args") or {}, default_origin)
+            args = tc.get("args") or {}
+            force_first = False
+            if name in _ROUTING_TOOL_NAMES and (default_origin or "").strip():
+                routing_idx += 1
+                if routing_idx == 1:
+                    force_first = True
+            args = inject_routing_origin(name, args, default_origin, force_first_leg=force_first)
             tid = tc.get("id") or ""
             tool = tool_map.get(name)
             if tool is None:

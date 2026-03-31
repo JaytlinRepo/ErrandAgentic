@@ -17,7 +17,9 @@ from agent.orchestrator import run_errand_agent_with_tools
 from agent.user_identity import get_or_create_user_id
 from app.components.chat_bubbles import render_chat_history
 from app.components.claude_theme import inject_claude_theme, title_bar
+from app.address_enrichment import append_resolved_stop_addresses
 from configs.settings import OLLAMA_HOST, OLLAMA_MODEL
+from tools.maps import reverse_geocode_latlon
 from guardrails import (
     extract_errand_lines,
     is_food_place,
@@ -74,6 +76,9 @@ def main() -> None:
         st.session_state.stops_for_session = ""
 
     starting_location_note: str | None = None
+    display_location: str | None = None
+    geo_lat: float | None = None
+    geo_lon: float | None = None
     manual_start = ""
     model = OLLAMA_MODEL
     use_tools = True
@@ -84,6 +89,7 @@ def main() -> None:
             st.session_state.chat_history = []
             st.session_state.stops_for_session = ""
             st.session_state.pop("eat_last_food_pick", None)
+            st.session_state.pop("address_resolve_cache", None)
             st.rerun()
 
         st.caption("Starting point")
@@ -112,19 +118,32 @@ def main() -> None:
     acc = qp.get("acc")
     if lat and lon:
         try:
-            starting_location_note = f"{float(lat):.6f},{float(lon):.6f}"
+            geo_lat, geo_lon = float(lat), float(lon)
+            starting_location_note = f"{geo_lat:.6f},{geo_lon:.6f}"
         except ValueError:
             st.sidebar.warning("Invalid coordinates in URL.")
     if manual_start:
         starting_location_note = manual_start
+        display_location = manual_start
+    elif geo_lat is not None and geo_lon is not None:
+        coord_key = f"{geo_lat:.6f},{geo_lon:.6f}"
+        if st.session_state.get("_revgeo_key") != coord_key:
+            st.session_state["_revgeo_key"] = coord_key
+            st.session_state.pop("_revgeo_address", None)
+            try:
+                st.session_state["_revgeo_address"] = reverse_geocode_latlon(geo_lat, geo_lon)
+            except Exception:
+                st.session_state["_revgeo_address"] = None
+        display_location = st.session_state.get("_revgeo_address") or starting_location_note
 
     has_location = bool((starting_location_note or "").strip())
     geo_denied = (qp.get("geo_denied") or "").strip()
 
     if has_location and starting_location_note:
         with st.sidebar:
-            short = starting_location_note if len(starting_location_note) <= 36 else starting_location_note[:33] + "…"
-            st.caption(f"Start: `{short}`")
+            label = display_location if display_location is not None else starting_location_note
+            short = label if len(label) <= 40 else label[:37] + "…"
+            st.caption(f"Current Location: `{short}`")
             if acc and lat and lon:
                 try:
                     st.caption(f"±{float(acc):.0f} m")
@@ -209,7 +228,11 @@ def main() -> None:
                 pick = st.session_state.get("eat_last_food_pick")
                 last_food_for_agent = pick if pick in food_candidates else food_candidates[-1]
 
-        prompt_text = with_start_location_context(errands, starting_location_note)
+        prompt_text = with_start_location_context(
+            errands,
+            starting_location_note,
+            display_address=display_location,
+        )
         prompt_text = with_food_preference_context(prompt_text, last_food_for_agent)
         prompt_text = with_unique_stop_constraint(prompt_text, errand_lines)
         prompt_text = with_planned_order_context(prompt_text, errand_lines, last_food_for_agent)
@@ -232,6 +255,13 @@ def main() -> None:
                         user_id=user_id,
                         persist_memory=learn_memory,
                         latest_user_message=incoming,
+                    )
+                    reply = append_resolved_stop_addresses(
+                        reply,
+                        errand_lines,
+                        starting_location_note=starting_location_note,
+                        display_location=display_location,
+                        cache=st.session_state.setdefault("address_resolve_cache", {}),
                     )
                 else:
                     hist_transcript = f"{hist_transcript}User: {incoming}\n"

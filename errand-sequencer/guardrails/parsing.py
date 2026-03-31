@@ -5,6 +5,40 @@ from __future__ import annotations
 import re
 
 
+def _split_trailing_home(s: str) -> list[str] | None:
+    """Split prose that ends with '... and home' or '... and then home' into stops + 'home'.
+
+    Avoids buggy splits from bare ``then`` regex (e.g. leaving 'Douglasville and' on the prior leg).
+    """
+    s = " ".join((s or "").split())
+    if not s:
+        return None
+
+    if re.search(r"\s+and\s+then\s+home\s*$", s, flags=re.I):
+        m = re.match(r"^(.*)\s+and\s+then\s+home\s*$", s, flags=re.I | re.DOTALL)
+        if m:
+            core = m.group(1).strip()
+            if "," in core:
+                head_parts = [p.strip() for p in core.split(",") if p.strip()]
+                if len(head_parts) >= 2:
+                    return head_parts + ["home"]
+            return [core, "home"] if core else ["home"]
+        return None
+
+    if re.search(r"\s+and\s+home\s*$", s, flags=re.I):
+        m = re.match(r"^(.*)\s+and\s+home\s*$", s, flags=re.I | re.DOTALL)
+        if m:
+            core = m.group(1).strip()
+            if "," in core:
+                head_parts = [p.strip() for p in core.split(",") if p.strip()]
+                if len(head_parts) >= 2:
+                    return head_parts + ["home"]
+            return [core, "home"] if core else ["home"]
+        return None
+
+    return None
+
+
 def split_paragraph_into_errands(text: str) -> list[str]:
     """Split a single prose block into multiple stops (paragraph / sentence style).
 
@@ -14,6 +48,10 @@ def split_paragraph_into_errands(text: str) -> list[str]:
     s = " ".join((text or "").split())
     if not s:
         return []
+
+    hit = _split_trailing_home(s)
+    if hit is not None:
+        return hit
 
     # 1) Explicit legs separated by semicolons
     if ";" in s:
@@ -58,6 +96,8 @@ def _should_expand_paragraph_line(line: str) -> bool:
     if len(line) < 24:
         return False
     if ";" in line:
+        return True
+    if re.search(r"\s+and\s+(?:then\s+)?home\s*$", line, flags=re.I):
         return True
     if re.search(r"\s+then\s+|\s+and\s+then\s+", line, flags=re.I):
         return True
