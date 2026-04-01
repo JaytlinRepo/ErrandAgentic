@@ -62,3 +62,36 @@ def test_home_uses_display_location():
             cache={},
         )
     assert "**Home:** 99 Home Ln, GA" in out
+
+
+def test_append_resolved_stop_addresses_replaces_existing_section():
+    lines = ["Target Austell"]
+    prior = "Plan text.\n\n---\n**Resolved stop addresses**\n- old line"
+    ok_out = "Query: x\nSTREET_ADDRESS (required — paste into your itinerary): 1 Main St\n"
+    with patch("app.address_enrichment.get_place_address_impl", return_value=ok_out):
+        out = append_resolved_stop_addresses(
+            prior,
+            lines,
+            starting_location_note=None,
+            display_location=None,
+            cache={},
+        )
+    assert out.count("**Resolved stop addresses**") == 1
+    assert "old line" not in out
+
+
+def test_hungry_want_to_go_label_is_clean():
+    lines = ["I'm hungry and want to go to wendys"]
+    ok_out = (
+        "Query: x\n"
+        "STREET_ADDRESS (required — paste into your itinerary): 599 Thornton Rd, Lithia Springs, GA\n"
+    )
+    with patch("app.address_enrichment.get_place_address_impl", return_value=ok_out):
+        out = append_resolved_stop_addresses(
+            "Plan.",
+            lines,
+            starting_location_note=None,
+            display_location=None,
+            cache={},
+        )
+    assert "**wendys:**" in out.lower()

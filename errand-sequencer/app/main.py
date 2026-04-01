@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -15,10 +16,11 @@ import streamlit.components.v1 as components
 from agent.ollama_client import generate_errand_response
 from agent.orchestrator import run_errand_agent_with_tools
 from agent.user_identity import get_or_create_user_id
+from app.address_enrichment import append_resolved_stop_addresses
 from app.components.chat_bubbles import render_chat_history
 from app.components.claude_theme import inject_claude_theme, title_bar
-from app.address_enrichment import append_resolved_stop_addresses
-from configs.settings import OLLAMA_HOST, OLLAMA_MODEL
+from app.response_cleanup import strip_relative_now_phrases
+from configs.settings import AWS_DEFAULT_REGION, BEDROCK_AGENT_MODEL_ID, BEDROCK_MODEL_ID
 from tools.maps import reverse_geocode_latlon
 from guardrails import (
     extract_errand_lines,
@@ -65,6 +67,28 @@ _GEO_HTML = """
 </script>
 """
 
+_REPLACE_STOPS_PATTERNS = (
+    r"^\s*i need to\b",
+    r"^\s*need to\b",
+    r"^\s*go to\b",
+    r"^\s*stops?\s*[:\-]",
+    r"^\s*route\b",
+)
+
+
+def _should_replace_stops_from_followup(incoming: str, existing_stops: str) -> bool:
+    """Heuristic: follow-up phrasing that likely introduces a new stop list."""
+    t = (incoming or "").strip()
+    if not t:
+        return False
+    if not (existing_stops or "").strip():
+        return True
+    if re.search(r"^\s*(also|add)\b", t, flags=re.I):
+        return False
+    if any(re.search(p, t, flags=re.I) for p in _REPLACE_STOPS_PATTERNS):
+        return True
+    return False
+
 
 def main() -> None:
     st.set_page_config(page_title="ErrandAgentic", layout="wide", initial_sidebar_state="expanded")
@@ -80,7 +104,7 @@ def main() -> None:
     geo_lat: float | None = None
     geo_lon: float | None = None
     manual_start = ""
-    model = OLLAMA_MODEL
+    model = BEDROCK_AGENT_MODEL_ID
     use_tools = True
     learn_memory = True
 
@@ -106,8 +130,12 @@ def main() -> None:
 
         st.divider()
         with st.expander("Model & tools", expanded=False):
-            model = st.text_input("Ollama model", value=model, help="Pulled in Ollama")
-            st.caption(f"`{OLLAMA_HOST}`")
+            model = st.text_input(
+                "Bedrock model ID",
+                value=model,
+                help="Tool mode needs a Converse tool-capable model (default: Claude Haiku).",
+            )
+            st.caption(f"Region `{AWS_DEFAULT_REGION}` · simple chat uses `{BEDROCK_MODEL_ID}`")
             use_tools = st.toggle("Maps & weather", value=use_tools)
             learn_memory = st.toggle("Remember preferences", value=learn_memory)
         user_id = get_or_create_user_id()
@@ -208,12 +236,17 @@ def main() -> None:
         incoming = str(msg).strip()
 
     if incoming and can_message:
-        if not st.session_state.stops_for_session.strip():
-            first_lines = extract_errand_lines(incoming)
-            if not first_lines:
+        parsed_incoming = extract_errand_lines(incoming)
+        existing_stops = st.session_state.stops_for_session
+        if not existing_stops.strip():
+            if not parsed_incoming:
                 st.error("Add at least one stop (e.g. Target, Ross, Starbucks).")
                 return
             st.session_state.stops_for_session = incoming.strip()
+            st.session_state.pop("eat_last_food_pick", None)
+        elif parsed_incoming and _should_replace_stops_from_followup(incoming, existing_stops):
+            st.session_state.stops_for_session = incoming.strip()
+            st.session_state.pop("eat_last_food_pick", None)
 
         errands = st.session_state.stops_for_session
         errand_lines = extract_errand_lines(errands)
@@ -263,15 +296,16 @@ def main() -> None:
                         display_location=display_location,
                         cache=st.session_state.setdefault("address_resolve_cache", {}),
                     )
+                    reply = strip_relative_now_phrases(reply)
                 else:
                     hist_transcript = f"{hist_transcript}User: {incoming}\n"
                     reply = generate_errand_response(
                         prompt_text,
-                        model=model or None,
                         history_transcript=hist_transcript,
                     )
+                    reply = strip_relative_now_phrases(reply)
             except Exception as e:
-                st.error("Could not reach Ollama.")
+                st.error("Could not reach AWS Bedrock (check credentials, region, and model access).")
                 st.code(str(e), language="text")
                 return
         st.session_state.chat_history.append((incoming, reply))

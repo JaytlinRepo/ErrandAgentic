@@ -20,6 +20,15 @@ except ImportError:
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:latest")
 
+# AWS Bedrock — InvokeModel (e.g. Llama 3) for simple chat + memory extraction
+BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "meta.llama3-8b-instruct-v1:0")
+# Converse API + tool use (Llama 3 8B does not support tools; default to Claude Haiku)
+# Use inference profile ID (us.*) for Converse; base anthropic.* id often rejects on-demand.
+BEDROCK_AGENT_MODEL_ID = os.environ.get(
+    "BEDROCK_AGENT_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+)
+AWS_DEFAULT_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+
 # Google Maps Platform (Places, Distance Matrix; Directions available for future use)
 # Set in `.env` as GOOGLE_MAPS_API_KEY=... (never hard-code keys in source).
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()

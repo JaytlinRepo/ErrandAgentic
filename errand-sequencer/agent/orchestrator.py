@@ -1,9 +1,9 @@
-"""LangChain agent with Ollama and tool calling."""
+"""LangChain agent with AWS Bedrock (Converse) and tool calling."""
 
 from __future__ import annotations
 
+from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_ollama import ChatOllama
 
 from agent.memory_extract import extract_preference_bullets
 from agent.tool_repair import (
@@ -22,9 +22,9 @@ from agent.prompts import (
     USER_MEMORY_INSTRUCTION,
 )
 from configs.settings import (
+    AWS_DEFAULT_REGION,
+    BEDROCK_AGENT_MODEL_ID,
     MAX_CHAT_HISTORY_TURNS,
-    OLLAMA_HOST,
-    OLLAMA_MODEL,
     RAG_ENABLED,
     USER_MEMORY_ENABLED,
     USER_MEMORY_EXTRACT_ENABLED,
@@ -74,7 +74,6 @@ def _build_system_prompt(
 
 def _maybe_persist_user_insights(
     *,
-    model: str,
     user_message: str,
     assistant_reply: str,
     user_id: str | None,
@@ -87,10 +86,8 @@ def _maybe_persist_user_insights(
         or not (user_id or "").strip()
     ):
         return
-    base = OLLAMA_HOST.rstrip("/")
-    llm = ChatOllama(model=model, base_url=base, temperature=0)
     try:
-        bullets = extract_preference_bullets(llm, user_message, assistant_reply)
+        bullets = extract_preference_bullets(user_message, assistant_reply)
         if not bullets:
             return
         from rag.retriever import upsert_user_memory_texts
@@ -110,9 +107,12 @@ def run_errand_agent_with_tools(
     latest_user_message: str | None = None,
 ) -> str:
     """Run the chat model with Maps/weather tools; optional multi-turn history and Chroma user memory."""
-    model = model or OLLAMA_MODEL
-    base = OLLAMA_HOST.rstrip("/")
-    llm = ChatOllama(model=model, base_url=base, temperature=0)
+    model = model or BEDROCK_AGENT_MODEL_ID
+    llm = ChatBedrockConverse(
+        model=model,
+        region_name=AWS_DEFAULT_REGION,
+        temperature=0,
+    )
     llm_with_tools = llm.bind_tools(ERRAND_TOOLS)
     tool_map = {t.name: t for t in ERRAND_TOOLS}
 
@@ -194,7 +194,6 @@ def run_errand_agent_with_tools(
 
     extract_msg = (latest_user_message or "").strip() or user_block[:2000]
     _maybe_persist_user_insights(
-        model=model,
         user_message=extract_msg,
         assistant_reply=reply,
         user_id=user_id,

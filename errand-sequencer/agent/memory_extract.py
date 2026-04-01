@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from langchain_core.messages import HumanMessage
-from langchain_ollama import ChatOllama
+from agent.llm import BedrockLLM
 
 
 def extract_preference_bullets(
-    llm: ChatOllama,
     user_message: str,
     assistant_reply: str,
 ) -> list[str]:
@@ -25,8 +23,8 @@ User message:
 Assistant reply:
 {assistant_reply[:1800]}
 """
-    msg = llm.invoke([HumanMessage(content=prompt)])
-    text = (msg.content or "").strip()
+    llm = BedrockLLM()
+    text = (llm.query(prompt, max_tokens=256) or "").strip()
     if not text:
         return []
     first = text.splitlines()[0].strip().upper()

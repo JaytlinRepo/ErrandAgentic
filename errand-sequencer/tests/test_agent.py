@@ -21,15 +21,18 @@ def test_errand_tools_registered():
     }
 
 
-@pytest.mark.skipif(os.getenv("ERRAND_AGENT_INTEGRATION") != "1", reason="Set ERRAND_AGENT_INTEGRATION=1 for live Ollama")
+@pytest.mark.skipif(
+    os.getenv("ERRAND_AGENT_INTEGRATION") != "1",
+    reason="Set ERRAND_AGENT_INTEGRATION=1 for live Bedrock + optional Maps key",
+)
 def test_agent_runs_real_errand_list_with_tools():
-    """Phase 2: model reasons over a realistic list and may call tools (needs Ollama + optional Maps key)."""
+    """Phase 2: model reasons over a realistic list and may call tools (needs Bedrock agent model + optional Maps key)."""
     prompt = """Today in Cambridge MA I need to:
 - Mail a package at USPS near Harvard
 - Pick up a prescription at CVS Harvard Square
 - Groceries at Trader Joe's on Memorial Drive
 
 What's a good order? If useful, check weather and whether CVS tends to be open afternoon, and travel time between Harvard area and Memorial Drive."""
-    model = os.getenv("OLLAMA_MODEL") or "llama3.2:latest"
-    reply = run_errand_agent_with_tools(prompt, model=model)
+    model = os.getenv("BEDROCK_AGENT_MODEL_ID")
+    reply = run_errand_agent_with_tools(prompt, model=model or None)
     assert len(reply.strip()) > 80

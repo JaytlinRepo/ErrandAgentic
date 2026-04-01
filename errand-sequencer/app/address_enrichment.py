@@ -27,8 +27,17 @@ def _is_home_line(line: str) -> bool:
 
 def _strip_leading_prose(s: str) -> str:
     s = s.strip()
+    m = re.search(r"\b(?:want|wanna)\s+to\s+go\s+to\b", s, flags=re.I)
+    if m:
+        s = s[m.end() :].strip()
     s = re.sub(
         r"^\s*(i\s+need\s+to\s+go\s+to|need\s+to\s+go\s+to|go\s+to)\s+",
+        "",
+        s,
+        flags=re.I,
+    )
+    s = re.sub(
+        r"^\s*(i\s*(?:am|'m)\s+hungry\s+and\s+|i\s+want\s+to\s+|want\s+to\s+)",
         "",
         s,
         flags=re.I,
@@ -78,6 +87,13 @@ def append_resolved_stop_addresses(
     cache: dict[str, str] | None = None,
 ) -> str:
     """Append a markdown block with one resolved address per non-home errand line."""
+    # Keep only one canonical section even if model already emitted variants.
+    reply = re.sub(
+        r"\n*---\s*\*\*Resolved stop addresses\*\*[\s\S]*$",
+        "",
+        reply or "",
+        flags=re.IGNORECASE,
+    ).rstrip()
     lines = _expand_lines_for_addresses(list(errand_lines or []))
     if not lines:
         return reply
