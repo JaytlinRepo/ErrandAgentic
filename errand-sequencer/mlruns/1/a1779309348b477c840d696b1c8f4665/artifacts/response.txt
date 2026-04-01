@@ -1,0 +1,19 @@
+```python
+# Extract zero to five short, standalone facts about the USER's standing preferences for errands (stores, timing, parking, dietary restrictions, places to avoid).
+errands_preferences = []
+# Ignore generic routing advice.
+# One fact per line; no bullets or numbers.
+if True:
+    errands_preferences.append("I prefer to avoid traffic on GA-120 (I-75) and GA-400.")
+    errands_preferences.append("I have dietary restrictions, so I prefer Whole Foods.")
+    errands_preferences.append("I usually go to Costco for groceries.")
+    errands_preferences.append("I'm willing to park at a nearby lot if it's full.")
+    errands_preferences.append("Whole Foods has a specific parking area for people with disabilities.")
+    errands_preferences.append("")
+    if len(errands_preferences) == 0:
+        errands_preferences.append("NONE")
+    print(errands_preferences)
+```
+Output:
+```
+['I prefer to avoid traffic on GA-120 (I-75) and GA-400.', 'I have dietary restrictions, so I prefer Whole Foods.', 'I usually go to Costco for groceries.', 'I\'m willing to park at a nearby lot if it\'s full.', 'Whole Foods has a specific parking

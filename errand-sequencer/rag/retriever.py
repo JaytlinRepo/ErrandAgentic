@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from dataclasses import dataclass
 from functools import lru_cache
 
 import chromadb
@@ -15,6 +16,7 @@ from configs.settings import (
     CHROMA_DATABASE,
     CHROMA_DATABASE_DEFAULT,
     CHROMA_TENANT,
+    CHROMA_USE_CLOUD,
     RAG_CHROMA_DIR,
     RAG_COLLECTION,
     RAG_EMBEDDING_MODEL,
@@ -24,6 +26,18 @@ from configs.settings import (
 )
 from configs.ml_tracker import get_mlflow_tracker
 from rag.embedder import embed_texts
+
+
+@dataclass(frozen=True)
+class RAGRetrievalStats:
+    """Per-retrieval stats for MLflow / Layer 2 dashboards (general vs user memory)."""
+
+    kind: str
+    query: str
+    chunk_count: int
+    avg_relevance_score: float | None
+    top_relevance_score: float | None
+    min_relevance_score: float | None
 
 
 def _make_cloud_client() -> ClientAPI:
@@ -50,8 +64,12 @@ def _make_cloud_client() -> ClientAPI:
 
 @lru_cache(maxsize=1)
 def _client() -> ClientAPI:
-    """Single shared client: Chroma Cloud if CHROMA_API_KEY is set, else local persistent."""
-    if CHROMA_API_KEY:
+    """Single shared client: Chroma Cloud when CHROMA_MODE=cloud (or legacy key-only), else local disk."""
+    if CHROMA_USE_CLOUD:
+        if not CHROMA_API_KEY:
+            raise RuntimeError(
+                "CHROMA_MODE selects cloud but CHROMA_API_KEY is missing. Set it in errand-sequencer/.env"
+            )
         return _make_cloud_client()
     RAG_CHROMA_DIR.mkdir(parents=True, exist_ok=True)
     return chromadb.PersistentClient(path=str(RAG_CHROMA_DIR))
@@ -64,7 +82,7 @@ def reset_client_cache() -> None:
 
 def chroma_connection_mode() -> str:
     """Human-readable label for diagnostics."""
-    return "chroma_cloud" if CHROMA_API_KEY else "local_persistent"
+    return "chroma_cloud" if CHROMA_USE_CLOUD else "local_persistent"
 
 
 def list_collection_names() -> list[str]:
@@ -89,6 +107,14 @@ def reset_collection() -> None:
 
 def retrieve_context(query: str, *, top_k: int | None = None) -> str:
     """Return formatted excerpts from curated knowledge (kind=general), or empty if none."""
+    text, _ = retrieve_context_and_stats(query, top_k=top_k)
+    return text
+
+
+def retrieve_context_and_stats(
+    query: str, *, top_k: int | None = None
+) -> tuple[str, RAGRetrievalStats | None]:
+    """Same as ``retrieve_context`` plus structured stats for MLflow session metrics."""
     return _retrieve_by_kind(
         query,
         kind=RAG_KIND_GENERAL,
@@ -99,9 +125,17 @@ def retrieve_context(query: str, *, top_k: int | None = None) -> str:
 
 def retrieve_user_memory(query: str, user_id: str, *, top_k: int | None = None) -> str:
     """Return formatted excerpts for this user only (kind=user). Empty if none."""
+    text, _ = retrieve_user_memory_and_stats(query, user_id, top_k=top_k)
+    return text
+
+
+def retrieve_user_memory_and_stats(
+    query: str, user_id: str, *, top_k: int | None = None
+) -> tuple[str, RAGRetrievalStats | None]:
+    """Same as ``retrieve_user_memory`` plus structured stats for MLflow."""
     user_id = (user_id or "").strip()
     if not user_id:
-        return ""
+        return "", None
     return _retrieve_by_kind(
         query,
         kind=RAG_KIND_USER,
@@ -120,10 +154,10 @@ def _retrieve_by_kind(
     source_label: str,
     extra_where: dict[str, str] | None = None,
     show_source_line: bool = True,
-) -> str:
+) -> tuple[str, RAGRetrievalStats | None]:
     query = (query or "").strip()
     if not query:
-        return ""
+        return "", None
     k = top_k if top_k is not None else RAG_TOP_K
     col = get_collection()
     where: dict = {"kind": kind}
@@ -131,7 +165,7 @@ def _retrieve_by_kind(
         where = {"$and": [{"kind": kind}, extra_where]}
     probe = col.get(where=where, limit=1, include=[])
     if not (probe.get("ids") or []):
-        return ""
+        return "", None
     emb = embed_texts([query], model_name=RAG_EMBEDDING_MODEL)[0]
     res = col.query(
         query_embeddings=[emb],
@@ -142,7 +176,7 @@ def _retrieve_by_kind(
     docs = (res.get("documents") or [[]])[0]
     metas = (res.get("metadatas") or [[]])[0]
     if not docs:
-        return ""
+        return "", None
     lines: list[str] = []
     for i, doc in enumerate(docs, start=1):
         meta = metas[i - 1] if i - 1 < len(metas) else {}
@@ -155,12 +189,24 @@ def _retrieve_by_kind(
     scores: list[float] | None = None
     if distances:
         scores = [1.0 / (1.0 + float(d)) for d in distances]
+    avg_s = sum(scores) / len(scores) if scores else None
+    top_s = max(scores) if scores else None
+    min_s = min(scores) if scores else None
+    stats = RAGRetrievalStats(
+        kind=kind,
+        query=query,
+        chunk_count=len(docs),
+        avg_relevance_score=avg_s,
+        top_relevance_score=top_s,
+        min_relevance_score=min_s,
+    )
     get_mlflow_tracker().log_rag_retrieval(
+        rag_kind=kind,
         query=query,
         chunks_retrieved=list(docs),
         scores=scores,
     )
-    return "\n\n".join(lines)
+    return "\n\n".join(lines), stats
 
 
 def upsert_user_memory_texts(

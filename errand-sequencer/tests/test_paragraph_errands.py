@@ -99,3 +99,17 @@ def test_split_same_with_and_then_home():
     assert len(out) == 3
     assert out[2].strip().lower() == "home"
 
+
+def test_split_costco_and_whole_foods_single_and():
+    text = "I need to go to Costco in Kennesaw and Whole Foods in Buckhead"
+    out = split_paragraph_into_errands(text)
+    assert len(out) == 2
+    assert "costco" in out[0].lower() and "kennesaw" in out[0].lower()
+    assert "whole foods" in out[1].lower() or "whole" in out[1].lower()
+
+
+def test_extract_errand_lines_expands_costco_and_whole_foods():
+    blob = "I need to go to Costco in Kennesaw and Whole Foods in Buckhead"
+    lines = extract_errand_lines(blob)
+    assert len(lines) == 2
+

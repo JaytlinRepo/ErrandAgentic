@@ -26,26 +26,32 @@ Agentic errand sequencing with a Streamlit UI, RAG, and optional fine-tuning.
    GOOGLE_MAPS_API_KEY=your_key_here
    ```
 
-4. **RAG (Chroma + embeddings)** — Knowledge lives under `data/raw/` (sample tips in `data/raw/errand_tips/`). Ingest into a vector store, then the agent retrieves excerpts automatically.
+4. **Vector database (Chroma + embeddings)** — Knowledge lives under `data/raw/` (for example `data/raw/errand_tips/`). Ingest into Chroma, then the agent retrieves excerpts when `RAG_ENABLED=true`.
 
-   **Local Chroma (default):** embeddings + DB under `data/chroma_db/` (gitignored contents).
+   **Chroma Cloud (recommended for access from anywhere)** — set in `.env`:
+
+   ```
+   CHROMA_MODE=cloud
+   CHROMA_API_KEY=your_key_here
+   CHROMA_TENANT=your_tenant_here
+   CHROMA_DATABASE=your_database_here
+   ```
+
+   Re-ingest so data lands in that cloud project:
 
    ```bash
-   python -m rag.ingest --reset
+   python rag/ingest.py --reset
    ```
 
-   **Chroma Cloud:** add your API key to `.env` (and optional tenant/database from the Chroma dashboard):
+   **Local disk instead:** set `CHROMA_MODE=local` (or leave `CHROMA_MODE` unset and remove `CHROMA_API_KEY` for legacy behavior). Optionally override the folder with `CHROMA_DB_PATH` or `RAG_CHROMA_DIR`; default is `data/chroma_db/` (gitignored contents).
 
-   ```
-   CHROMA_API_KEY=ck-your-key-here
-   # Optional if not auto-resolved from the key:
-   # CHROMA_TENANT=your-tenant-id
-   # CHROMA_DATABASE=your-database-name
+   ```bash
+   python rag/ingest.py --reset
    ```
 
-   Then run `python -m rag.ingest --reset` again so data is written to the cloud project.
+   **Sanity checks:** `python -m rag.diagnose` (connection mode + collection counts). For cloud retrieval smoke: `python tests/test_rag.py` from `errand-sequencer`. For pytest: `CHROMA_CLOUD_CHECK=1 pytest tests/test_rag.py -k chroma_cloud`.
 
-   **Not seeing data in the Chroma dashboard?** Run `python -m rag.diagnose` from `errand-sequencer/`. If it says `local_persistent`, your API key was not loaded — fix `.env` (variable name `CHROMA_API_KEY`) and re-run ingest. In the Cloud UI, open your **organization → Database** (match `CHROMA_DATABASE` if set), then **Collections** — data is under the collection name `errand_knowledge` (configurable via `RAG_COLLECTION`), not as separate “databases” per markdown file.
+   **Not seeing data in the Chroma dashboard?** If `diagnose` reports `local_persistent`, set `CHROMA_MODE=cloud` and credentials, reload `.env`, run `python -m rag.diagnose --clear-cache`, then ingest again. In the Cloud UI, open your org → the **database** that matches `CHROMA_DATABASE`, then **collections** — data is under `errand_knowledge` (override with `RAG_COLLECTION`).
 
 ## Run the app
 

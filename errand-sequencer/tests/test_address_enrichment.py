@@ -80,6 +80,45 @@ def test_append_resolved_stop_addresses_replaces_existing_section():
     assert "old line" not in out
 
 
+def test_strip_plain_resolved_and_model_junk_before_append():
+    lines = ["Costco in Kennesaw", "Whole Foods in Buckhead"]
+    ok_ken = (
+        "Query: x\nSTREET_ADDRESS (required — paste into your itinerary): "
+        "645 Ernest W Barrett Pkwy NW, Kennesaw, GA\n"
+    )
+    ok_wf = (
+        "Query: x\nSTREET_ADDRESS (required — paste into your itinerary): "
+        "77 W Paces Ferry Rd NW, Atlanta, GA\n"
+    )
+
+    prior = (
+        "Both closed tonight.\n\n"
+        "Would you like tomorrow?\n\n"
+        "Resolved stop addresses\n\n"
+        '"I need to go to Costco in Kennesaw: 645 fake\n'
+        'Whole Foods in Buckhead": 77 fake\n'
+    )
+
+    def _fake_impl(q: str, near: str = "") -> str:
+        if "costco" in q.lower() or "kennesaw" in q.lower():
+            return ok_ken
+        return ok_wf
+
+    with patch("app.address_enrichment.get_place_address_impl", side_effect=_fake_impl):
+        out = append_resolved_stop_addresses(
+            prior,
+            lines,
+            starting_location_note=None,
+            display_location=None,
+            cache={},
+        )
+    assert out.count("**Resolved stop addresses**") == 1
+    assert '"I need to go to Costco' not in out
+    assert "645 Ernest" in out
+    assert "77 W Paces" in out
+    assert out.strip().endswith("Atlanta, GA")
+
+
 def test_hungry_want_to_go_label_is_clean():
     lines = ["I'm hungry and want to go to wendys"]
     ok_out = (

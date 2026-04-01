@@ -4,6 +4,7 @@ from guardrails.food import is_food_place
 from guardrails.parsing import extract_errand_lines, wants_eat_last
 from guardrails.prompt_context import (
     with_current_time_context,
+    with_evening_retail_hours_critical_block,
     with_eat_last_guardrail_context,
     with_food_preference_context,
     with_planned_order_context,
@@ -21,4 +22,5 @@ __all__ = [
     "with_planned_order_context",
     "with_eat_last_guardrail_context",
     "with_current_time_context",
+    "with_evening_retail_hours_critical_block",
 ]

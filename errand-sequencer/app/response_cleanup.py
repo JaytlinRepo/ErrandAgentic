@@ -61,6 +61,10 @@ def strip_relative_now_phrases(text: str) -> str:
         out,
         flags=re.IGNORECASE,
     )
+    # Model sometimes emits a stray "**" line before "Resolved stop addresses" (broken markdown).
+    out = re.sub(r"\n\*\*\s*\n+(?=Resolved stop addresses\b)", "\n", out, flags=re.IGNORECASE)
+    out = re.sub(r"\n\*\*\s*\n+", "\n", out)
+    out = re.sub(r"^\*\*\s*$", "", out, flags=re.MULTILINE)
     out = re.sub(r"\(\s*\)", "", out)
     out = re.sub(r"\n{3,}", "\n\n", out)
     out = re.sub(r"[ \t]{2,}", " ", out)

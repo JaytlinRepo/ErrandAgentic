@@ -1,0 +1,22 @@
+## Time Window Constraints
+If stops include time windows like before 5pm or after school retrieval should emphasize anchor and buffer heuristics. Hard time windows must be treated as fixed constraints not optimization targets. Soft preferences can be treated as optimization targets.
+
+## Event and Sports Day Deference
+If the user mentions events, sports, or festivals retrieval should suggest checki
+---
+## Appointment Services
+Appointment services like salon, vet, and service desks should anchor the entire route. Build travel buffers using OTP afternoon slowdowns. GA-400 south between 4pm and 7pm adds significant time. Treat appointments as fixed points and sequence everything else around them.
+
+## Donation and Storage Trips
+Multi-stop donation plus storage unit plus home trips need vehicle load 
+---
+# Busy hours and timing
+---
+## Curbside Pickup Timing
+Curbside pickup requires arriving within a specific window, usually 15 to 30 minutes after notification. Late arrival can result in order being returned to store inventory. Treat curbside pickup windows as hard time constraints in sequencing. Have the app ready and order number accessible before pulling into the curbside zone.
+---
+## GA-400 South
+GA-400 southbound between Alpharetta and the I-285 interchange adds significant delay between 4pm and 7pm on weekdays. OTP north stops in Roswell, Alpharetta, and Cumming should be completed before 3pm or after 7pm when possible.
+
+## Braves Game Days
+Braves game days spike traffic near Truist Park and Cumberland. Avoid Cobb to Midtown round trips on game evenings. Check the Braves 

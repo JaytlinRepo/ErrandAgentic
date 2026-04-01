@@ -27,6 +27,7 @@ from guardrails import (
     is_food_place,
     wants_eat_last,
     with_current_time_context,
+    with_evening_retail_hours_critical_block,
     with_eat_last_guardrail_context,
     with_food_preference_context,
     with_planned_order_context,
@@ -284,6 +285,9 @@ def main() -> None:
             prompt_text, wants_eat_last=eat_last, food_candidates=food_candidates
         )
         prompt_text = with_current_time_context(prompt_text)
+        prompt_text = with_evening_retail_hours_critical_block(
+            errands=errands, prompt_text=prompt_text
+        )
         prior = list(st.session_state.chat_history)
         hist_transcript = ""
         for u, a in prior:

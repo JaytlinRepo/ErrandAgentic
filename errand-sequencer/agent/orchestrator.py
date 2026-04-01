@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import time
+from collections import Counter
 
 from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -29,6 +31,8 @@ from configs.settings import (
     BEDROCK_AGENT_MODEL_ID,
     MAX_CHAT_HISTORY_TURNS,
     RAG_ENABLED,
+    RAG_KIND_GENERAL,
+    RAG_KIND_USER,
     USER_MEMORY_ENABLED,
     USER_MEMORY_EXTRACT_ENABLED,
 )
@@ -100,25 +104,35 @@ def _log_converse_round(
 
 
 def _retrieve_knowledge_block(user_text: str) -> str:
-    if not RAG_ENABLED:
-        return ""
-    try:
-        from rag.retriever import retrieve_context
+    text, _ = _retrieve_knowledge_block_with_stats(user_text)
+    return text
 
-        return retrieve_context(user_text)
+
+def _retrieve_knowledge_block_with_stats(user_text: str):
+    if not RAG_ENABLED:
+        return "", None
+    try:
+        from rag.retriever import retrieve_context_and_stats
+
+        return retrieve_context_and_stats(user_text)
     except Exception:
-        return ""
+        return "", None
 
 
 def _retrieve_user_memory_block(user_text: str, user_id: str | None) -> str:
-    if not USER_MEMORY_ENABLED or not (user_id or "").strip():
-        return ""
-    try:
-        from rag.retriever import retrieve_user_memory
+    text, _ = _retrieve_user_memory_block_with_stats(user_text, user_id)
+    return text
 
-        return retrieve_user_memory(user_text, user_id.strip())
+
+def _retrieve_user_memory_block_with_stats(user_text: str, user_id: str | None):
+    if not USER_MEMORY_ENABLED or not (user_id or "").strip():
+        return "", None
+    try:
+        from rag.retriever import retrieve_user_memory_and_stats
+
+        return retrieve_user_memory_and_stats(user_text, user_id.strip())
     except Exception:
-        return ""
+        return "", None
 
 
 def _build_system_prompt(
@@ -190,8 +204,8 @@ def run_errand_agent_with_tools(
     raw_for_log = (errand_list or "").strip() or user_block
 
     with tracker.chat_session_context(raw_user_input=raw_for_log):
-        rag_block = _retrieve_knowledge_block(user_block)
-        mem_block = _retrieve_user_memory_block(user_block, user_id)
+        rag_block, rag_stats = _retrieve_knowledge_block_with_stats(user_block)
+        mem_block, mem_stats = _retrieve_user_memory_block_with_stats(user_block, user_id)
         include_rag = bool(rag_block.strip())
         include_user_memory = bool(mem_block.strip())
         include_conversation = bool(history)
@@ -222,6 +236,9 @@ def run_errand_agent_with_tools(
         messages.append(HumanMessage(content=human_content))
 
         session_cost = 0.0
+        tool_counts: Counter[str] = Counter()
+        tool_failures = 0
+        tool_invocations = 0
 
         t0 = time.perf_counter()
         ai: AIMessage = llm_with_tools.invoke(messages)
@@ -244,6 +261,9 @@ def run_errand_agent_with_tools(
             for tc in ai.tool_calls:
                 name = tc.get("name")
                 args = tc.get("args") or {}
+                nm = str(name) if name else "?"
+                tool_invocations += 1
+                tool_counts[nm] += 1
                 force_first = False
                 if name in _ROUTING_TOOL_NAMES and (default_origin or "").strip():
                     routing_idx += 1
@@ -254,11 +274,13 @@ def run_errand_agent_with_tools(
                 tool = tool_map.get(name)
                 if tool is None:
                     out = f"Unknown tool: {name}"
+                    tool_failures += 1
                 else:
                     try:
                         out = tool.invoke(args)
                     except Exception as e:
                         out = f"Error running {name}: {e}"
+                        tool_failures += 1
                 messages.append(ToolMessage(content=str(out), tool_call_id=tid))
             t1 = time.perf_counter()
             ai = llm_with_tools.invoke(messages)
@@ -273,6 +295,11 @@ def run_errand_agent_with_tools(
                 latency_ms=lat1,
             )
             messages.append(ai)
+
+        hit_max_tool_rounds = bool(
+            getattr(ai, "tool_calls", None) and rounds >= _MAX_TOOL_ROUNDS
+        )
+        llm_calls = 1 + rounds
 
         if getattr(ai, "tool_calls", None):
             reply = (
@@ -293,10 +320,25 @@ def run_errand_agent_with_tools(
         errand_lines = [ln.strip() for ln in user_block.splitlines() if ln.strip()]
         if not errand_lines:
             errand_lines = [user_block[:500]]
+        rg_chunks = rag_stats.chunk_count if rag_stats and rag_stats.kind == RAG_KIND_GENERAL else 0
+        ru_chunks = mem_stats.chunk_count if mem_stats and mem_stats.kind == RAG_KIND_USER else 0
         tracker.finalize_chat_session(
             full_human_message=human_content,
             errands=errand_lines[:50],
             result=reply,
             total_cost=session_cost,
+            agent_model_id=model,
+            llm_calls=llm_calls,
+            tool_invocations_total=tool_invocations,
+            tool_usage_json=json.dumps(dict(tool_counts)),
+            tool_failure_count=tool_failures,
+            hit_max_tool_rounds=hit_max_tool_rounds,
+            rag_enabled_config=RAG_ENABLED,
+            rag_general_chunk_count=rg_chunks,
+            rag_user_chunk_count=ru_chunks,
+            rag_general_avg_relevance=rag_stats.avg_relevance_score if rag_stats else None,
+            rag_general_top_relevance=rag_stats.top_relevance_score if rag_stats else None,
+            rag_user_avg_relevance=mem_stats.avg_relevance_score if mem_stats else None,
+            rag_user_top_relevance=mem_stats.top_relevance_score if mem_stats else None,
         )
         return reply

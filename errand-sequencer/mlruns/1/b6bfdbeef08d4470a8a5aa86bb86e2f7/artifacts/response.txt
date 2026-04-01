@@ -1,0 +1,3 @@
+I'll help you sequence these two errands efficiently. Let me first look up the exact addresses and then calculate travel times from your current location.
+{'type': 'tool_use', 'name': 'get_place_address', 'input': {'place_query': 'Costco Kennesaw GA', 'near_coordinates': '33.773282,-84.665579'}, 'id': 'tooluse_hqwfjOBi12u5JBTPCc62Lo'}
+{'type': 'tool_use', 'name': 'get_place_address', 'input': {'place_query': 'Whole Foods Buckhead GA', 'near_coordinates': '33.773282,-84.665579'}, 'id': 'tooluse_P34gjogHr23IUPsN6N6TeR'}

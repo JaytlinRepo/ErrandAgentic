@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 from configs.settings import (
     CHROMA_DATABASE,
@@ -37,9 +38,12 @@ def main() -> None:
 
     key_set = bool(cfg.CHROMA_API_KEY)
     mode = chroma_connection_mode()
+    mode_env = os.environ.get("CHROMA_MODE", "(unset)")
 
     print("=== Errand Sequencer — Chroma RAG diagnose ===\n")
     print(f"Connection mode: {mode}")
+    print(f"CHROMA_MODE (env raw): {mode_env}")
+    print(f"CHROMA_USE_CLOUD (resolved): {cfg.CHROMA_USE_CLOUD}")
     print(f"CHROMA_API_KEY present: {key_set}" + (f" (length {len(cfg.CHROMA_API_KEY)})" if key_set else ""))
     eff_db = CHROMA_DATABASE or CHROMA_DATABASE_DEFAULT
     print(f"CHROMA_TENANT: {CHROMA_TENANT or '(not set — Cloud may fail)'}")
@@ -49,8 +53,8 @@ def main() -> None:
         print("Cloud mode: tenant + database (database defaults to errand_rag if unset).")
     if mode == "local_persistent":
         print(f"Local data directory: {RAG_CHROMA_DIR.resolve()}")
-        print("\nIf you expected Chroma Cloud: add CHROMA_API_KEY to errand-sequencer/.env")
-        print("and run: python -m rag.ingest --reset")
+        print("\nIf you expected Chroma Cloud: set CHROMA_MODE=cloud and CHROMA_API_KEY in .env")
+        print("then run: python rag/ingest.py --reset")
     else:
         print("\nChroma Cloud: open https://www.trychroma.com/ → your org → pick the")
         print("Database that matches CHROMA_DATABASE (or the default for your API key).")

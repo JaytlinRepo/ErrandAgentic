@@ -1,0 +1,15 @@
+**Recommended order: Costco (Kennesaw) → Whole Foods (Buckhead).**
+
+This sequence minimizes backtracking and follows your stated preference for off-peak hours (current time is 9:59 PM, well outside rush periods).
+
+**Itinerary:**
+
+- **Leg 1:** From **Current Location** (2744 Jordan Ln, Lithia Springs, GA 30122) to **Costco Kennesaw** — ~38 min drive → Arrive ~10:37 PM
+- **Leg 2:** From **Costco Kennesaw** to **Whole Foods Buckhead** — ~25 min drive → Arrive ~11:02 PM
+
+**Addresses:**
+
+- **Costco:** 645 Ernest W Barrett Pkwy NW, Kennesaw, GA 30144, USA
+- **Whole Foods:** 77 W Paces Ferry Rd NW, Atlanta, GA 30305, USA
+
+**Note:** Both stores should be open late (Costco typically closes 10 PM, Whole Foods 10 PM). Verify closing times before departing if you expect to spend significant time shopping, as you may arrive near closing.

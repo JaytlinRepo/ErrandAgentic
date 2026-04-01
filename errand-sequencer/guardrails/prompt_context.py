@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
+
+_EVENING_RETAIL = re.compile(
+    r"(?i)\b(costco|whole\s+foods|sam'?s\s+club|target|walmart|kroger|publix|trader\s*joe'?s?|aldi|"
+    r"cvs|walgreens|grocery|pharmacy|mall|warehouse)\b"
+)
 
 
 def with_start_location_context(
@@ -111,6 +117,21 @@ def with_current_time_context(errands: str) -> str:
         "negative offset.\n"
         "- You **may** propose a **later** departure or arrival when justified (heavy traffic, peak hours, "
         "store not yet open, buffer time)—say why.\n"
-        "- Build arrival windows **forward** from **now** plus travel times from tools.\n\n"
+        "- Build arrival windows **forward** from **now** plus travel times from tools.\n"
+        "- **Store hours (critical):** If **now** is **evening or night** (roughly after **7:00 PM** local) and the errand list includes any **retail, grocery, warehouse club, pharmacy, or restaurant** stop, you **must** call **get_hours** for **each** such stop **before** you publish drive times or arrivals **for today**. If a stop is **closed** or would close **before** the user can arrive, say so plainly and change the plan (e.g. suggest doing that stop **tomorrow**, or swap order)—**never** output an arrival time at a location you have not verified is open.\n\n"
         f"{errands}"
+    )
+
+
+def with_evening_retail_hours_critical_block(*, errands: str, prompt_text: str) -> str:
+    """Append a second, emphatic get_hours mandate when local time is late + retail-like errands."""
+    now = datetime.now().astimezone()
+    if now.hour < 19 or not _EVENING_RETAIL.search(errands or ""):
+        return prompt_text
+    return (
+        f"{prompt_text}\n\n"
+        "**MANDATORY — evening/night:** Clock is **7:00 PM or later**. Your errands include **shopping, "
+        "warehouse club, or similar** stops. You **must** call **get_hours** on **every** such stop **before** "
+        "printing **tonight’s arrival times**. If **Costco** / **Whole Foods** / etc. is **already closed** or "
+        "**closes before the user arrives**, say so and **change the plan**—**never** give an ETA to a closed store.\n"
     )

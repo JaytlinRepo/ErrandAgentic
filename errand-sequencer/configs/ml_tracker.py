@@ -1,4 +1,4 @@
-"""MLflow tracking for model calls, RAG retrieval, and agent sessions."""
+"""MLflow Layer 2: SQLite tracking store + model / agent / RAG metrics."""
 
 from __future__ import annotations
 
@@ -8,6 +8,25 @@ from datetime import datetime
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_MLFLOW_DIR = _PROJECT_ROOT / "data" / "mlflow"
+_DEFAULT_SQLITE_DB = _MLFLOW_DIR / "tracking.db"
+
+
+def _default_tracking_uri() -> str:
+    """SQL backend so MLflow Overview (Usage / Quality / Tool calls) works."""
+    _MLFLOW_DIR.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{_DEFAULT_SQLITE_DB.resolve().as_posix()}"
+
+
+def _ensure_tracking_store_parent(uri: str) -> None:
+    if uri.startswith("sqlite:"):
+        path_part = uri.removeprefix("sqlite:///")
+        p = Path(path_part)
+        if not p.is_absolute():
+            p = _PROJECT_ROOT / p
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return
+    Path(uri).mkdir(parents=True, exist_ok=True)
 
 
 def _mlflow_enabled() -> bool:
@@ -15,10 +34,7 @@ def _mlflow_enabled() -> bool:
 
 
 def _tracking_uri() -> str:
-    return os.environ.get(
-        "MLFLOW_TRACKING_URI",
-        str(_PROJECT_ROOT / "data" / "mlflow"),
-    )
+    return os.environ.get("MLFLOW_TRACKING_URI", _default_tracking_uri())
 
 
 class MLFlowTracker:
@@ -28,7 +44,7 @@ class MLFlowTracker:
         if self._enabled:
             import mlflow
 
-            Path(self._uri).mkdir(parents=True, exist_ok=True)
+            _ensure_tracking_store_parent(self._uri)
             mlflow.set_tracking_uri(self._uri)
             mlflow.set_experiment(os.environ.get("MLFLOW_EXPERIMENT_NAME", "errand-sequencer"))
 
@@ -53,6 +69,7 @@ class MLFlowTracker:
         run_name = f"chat_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         with mlflow.start_run(run_name=run_name):
             mlflow.set_tag("run_kind", "chat_session")
+            mlflow.set_tag("layer", "agent_session")
             mlflow.set_tag("surface", "errand_agent")
             mlflow.log_text(raw_user_input or "", "user_input.txt")
             mlflow.log_param("user_input_preview", (raw_user_input or "")[:500])
@@ -66,20 +83,62 @@ class MLFlowTracker:
         result: str,
         total_cost: float,
         user_satisfied: bool | None = None,
+        agent_model_id: str = "",
+        llm_calls: int = 0,
+        tool_invocations_total: int = 0,
+        tool_usage_json: str = "{}",
+        tool_failure_count: int = 0,
+        hit_max_tool_rounds: bool = False,
+        rag_enabled_config: bool = False,
+        rag_general_chunk_count: int = 0,
+        rag_user_chunk_count: int = 0,
+        rag_general_avg_relevance: float | None = None,
+        rag_general_top_relevance: float | None = None,
+        rag_user_avg_relevance: float | None = None,
+        rag_user_top_relevance: float | None = None,
     ) -> None:
-        """Log final I/O on the active chat parent run (or a standalone run if none)."""
+        """Log final I/O and Layer 2 session metrics on the active chat parent run."""
         if not self._enabled:
             return
         import mlflow
 
         active = mlflow.active_run()
+        n_errands = max(len(errands), 1)
+        reply_words = len((result or "").split())
 
         def _log_outputs() -> None:
+            mlflow.set_tag("layer", "agent_session")
             mlflow.log_text(full_human_message, "full_prompt_to_model.txt")
             mlflow.log_text(result, "assistant_reply.txt")
             mlflow.log_param("errand_count", len(errands))
             mlflow.log_param("errands", str(errands)[:8000])
+            mlflow.log_param("agent_model_id", agent_model_id[:500])
             mlflow.log_metric("session_cost_usd", total_cost)
+            mlflow.log_metric("cost_per_errand_line_usd", total_cost / n_errands)
+            mlflow.log_metric("llm_calls", float(llm_calls))
+            mlflow.log_metric("tool_invocations_total", float(tool_invocations_total))
+            mlflow.log_metric("tool_failure_count", float(tool_failure_count))
+            mlflow.log_metric("hit_max_tool_rounds", float(int(hit_max_tool_rounds)))
+            mlflow.log_param("tool_usage_counts_json", tool_usage_json[:8000])
+            mlflow.log_metric("reply_char_count", float(len(result or "")))
+            mlflow.log_metric("reply_word_count", float(reply_words))
+            mlflow.log_param("rag_enabled_config", str(rag_enabled_config))
+            mlflow.log_metric("rag_context_injected", float(rag_general_chunk_count + rag_user_chunk_count > 0))
+            mlflow.log_metric("rag_general_chunks", float(rag_general_chunk_count))
+            mlflow.log_metric("rag_user_memory_chunks", float(rag_user_chunk_count))
+            mlflow.log_metric("rag_total_chunks", float(rag_general_chunk_count + rag_user_chunk_count))
+            for name, val in (
+                ("rag_general_avg_relevance", rag_general_avg_relevance),
+                ("rag_general_top_relevance", rag_general_top_relevance),
+                ("rag_user_avg_relevance", rag_user_avg_relevance),
+                ("rag_user_top_relevance", rag_user_top_relevance),
+            ):
+                if val is not None:
+                    mlflow.log_metric(name, float(val))
+            mlflow.log_param(
+                "rag_response_lift",
+                "not_measured_use_offline_eval_or_user_ratings",
+            )
             if user_satisfied is not None:
                 mlflow.log_metric("user_satisfied", float(int(user_satisfied)))
 
@@ -89,6 +148,7 @@ class MLFlowTracker:
 
         with mlflow.start_run(run_name=f"chat_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
             mlflow.set_tag("run_kind", "chat_session")
+            mlflow.set_tag("layer", "agent_session")
             mlflow.set_tag("surface", "errand_agent")
             mlflow.set_tag("orphan", "true")
             mlflow.log_text((errands and "\n".join(errands)) or "", "user_input.txt")
@@ -116,6 +176,8 @@ class MLFlowTracker:
         run_name = f"{model_type}_{datetime.now().strftime('%H%M%S')}"
         nested = self._nested_child_run()
         with mlflow.start_run(run_name=run_name, nested=nested):
+            mlflow.set_tag("layer", "model_usage")
+            mlflow.set_tag("model_family", _model_family_tag(model_id))
             mlflow.log_param("model_type", model_type)
             mlflow.log_param("model_id", model_id)
             mlflow.log_metric("input_tokens", float(input_tokens))
@@ -144,6 +206,7 @@ class MLFlowTracker:
     def log_rag_retrieval(
         self,
         *,
+        rag_kind: str,
         query: str,
         chunks_retrieved: list[str],
         scores: list[float] | None,
@@ -155,12 +218,30 @@ class MLFlowTracker:
         import mlflow
 
         nested = self._nested_child_run()
-        with mlflow.start_run(run_name=f"rag_{datetime.now().strftime('%H%M%S')}", nested=nested):
+        with mlflow.start_run(run_name=f"rag_{rag_kind}_{datetime.now().strftime('%H%M%S')}", nested=nested):
+            mlflow.set_tag("layer", "rag")
+            mlflow.set_tag("run_kind", "rag_retrieval")
+            mlflow.set_tag("rag_kind", rag_kind)
+            mlflow.log_param("rag_kind", rag_kind)
             mlflow.log_param("query", (query or "")[:2000])
             mlflow.log_metric("chunks_retrieved", float(len(chunks_retrieved)))
             if scores:
                 mlflow.log_metric("avg_relevance_score", sum(scores) / len(scores))
-                mlflow.log_metric("top_score", max(scores))
+                mlflow.log_metric("top_relevance_score", max(scores))
+                mlflow.log_metric("min_relevance_score", min(scores))
+            preview = "\n---\n".join((c[:400] for c in chunks_retrieved[:5]))
+            if preview.strip():
+                mlflow.log_text(preview, "retrieved_chunks_preview.txt")
+
+
+def _model_family_tag(model_id: str) -> str:
+    mid = (model_id or "").lower()
+    if "llama" in mid or "meta.llama" in mid:
+        return "llama"
+    if "claude" in mid or "anthropic" in mid:
+        return "claude"
+    return "other"
+
 
 _tracker: MLFlowTracker | None = None
 

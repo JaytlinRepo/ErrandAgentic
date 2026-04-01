@@ -1,0 +1,26 @@
+Current local time at request: 2026-03-31 10:01 PM EDT (ISO: 2026-03-31T22:01:35-04:00)
+Scheduling rules (follow exactly):
+- **Now** is the moment this request was sent. Treat it as the earliest realistic time the user can leave **Current Location** (the Starting location context value).
+- Do **not** propose any **departure** or **arrival** time **earlier** than that clock time (no “start at 9:00 PM” if the current time is already 9:14 PM).
+- **Never** write windows like **“now − 3 minutes”**, **“now minus …”**, or any phrasing that implies arriving **before** the current time. That is invalid. Prefer a concrete **clock time on or after now** (e.g. 6:42 PM local) instead of expressions like **now + N minutes**.
+- First stop after leaving **Current Location** (from the context line): arrival is **no earlier than now + travel time** for that leg. If travel time is ~0, say **now** or **upon arrival**, not a negative offset.
+- You **may** propose a **later** departure or arrival when justified (heavy traffic, peak hours, store not yet open, buffer time)—say why.
+- Build arrival windows **forward** from **now** plus travel times from tools.
+
+Starting location context for routing: 33.773282,-84.665579
+Human-readable address for this starting point (use when the user says **home** or **return home**; show this full address in the itinerary for that leg): 2744 Jordan Ln, Lithia Springs, GA 30122, USA
+
+Use this as the starting point when estimating travel efficiency. For the **first** drive leg, routing tools must use this value as **origin** and the **first errand** as **destination** (distance/time from your current position to your first stop—not from the first stop to the second).
+
+Errands:
+"I need to go to Costco in Kennesaw and Whole Foods in Buckhead"
+
+Hard constraint:
+- Build a route that visits each listed errand exactly once.
+- Do not duplicate stops in the final itinerary.
+- Exact errands to cover:
+- "I need to go to Costco in Kennesaw and Whole Foods in Buckhead"
+
+Planned stop order (must follow exactly unless a tool reports impossible routing):
+1. "I need to go to Costco in Kennesaw and Whole Foods in Buckhead"
+- Keep this order and provide travel-time-based ETAs for each leg.

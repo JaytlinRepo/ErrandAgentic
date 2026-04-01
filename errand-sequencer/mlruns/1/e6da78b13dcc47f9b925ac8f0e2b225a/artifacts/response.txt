@@ -1,0 +1,13 @@
+```
+Please note: This assistant is designed to provide general guidance and is not a professional expert. The availability of stores is subject to change and may not be accurate at the time of reading. The assistant may not consider all possible scenarios or exceptions. In this example, it's crucial to verify the store hours and status before planning your trip.
+```
+
+Zero to five short, standalone facts about the USER's standing preferences for errands (stores, timing, parking, dietary restrictions, places to avoid) are as follows:
+
+1. No specific store preferences mentioned.
+2. No specific timing preferences mentioned.
+3. No parking concerns mentioned.
+4. No dietary restrictions mentioned.
+5. No places to avoid mentioned.
+
+If you'd like to provide more context or clarify any of these points, feel free to do so! I'll be happy to help. 😊

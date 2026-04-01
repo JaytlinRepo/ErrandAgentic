@@ -1,0 +1,5 @@
+Now let me check travel times for both possible routes to determine the most efficient order:
+{'type': 'tool_use', 'name': 'get_travel_time', 'input': {'origin': '33.773282,-84.665579', 'destination': '645 Ernest W Barrett Pkwy NW, Kennesaw, GA 30144, USA', 'mode': 'driving'}, 'id': 'tooluse_rOyoIZTVnHitcqraeE1aID'}
+{'type': 'tool_use', 'name': 'get_travel_time', 'input': {'origin': '645 Ernest W Barrett Pkwy NW, Kennesaw, GA 30144, USA', 'destination': '77 W Paces Ferry Rd NW, Atlanta, GA 30305, USA', 'mode': 'driving'}, 'id': 'tooluse_Ma1g2FJ71g28FdgUyDYt3K'}
+{'type': 'tool_use', 'name': 'get_travel_time', 'input': {'origin': '33.773282,-84.665579', 'destination': '77 W Paces Ferry Rd NW, Atlanta, GA 30305, USA', 'mode': 'driving'}, 'id': 'tooluse_PyM7ELLX297rYNbJ7dxiDp'}
+{'type': 'tool_use', 'name': 'get_travel_time', 'input': {'origin': '77 W Paces Ferry Rd NW, Atlanta, GA 30305, USA', 'destination': '645 Ernest W Barrett Pkwy NW, Kennesaw, GA 30144, USA', 'mode': 'driving'}, 'id': 'tooluse_q9DXMvU4WmhWtyvIg2P9vu'}

@@ -53,6 +53,16 @@ def inject_claude_theme() -> None:
 
   .stMarkdown p, .stMarkdown li { color: #e0e0e0 !important; line-height: 1.55 !important; }
 
+  /* Markdown bold / emphasis (assistant replies use **text** — keep visible on dark bg) */
+  .stMarkdown strong, .stMarkdown b {
+    font-weight: 700 !important;
+    color: #fafafa !important;
+  }
+  .stMarkdown em, .stMarkdown i:not(.ea-muted) {
+    font-style: italic !important;
+    color: #ececec !important;
+  }
+
   /* Main-area captions (e.g. “Set a starting point…”) */
   div[data-testid="stAppViewContainer"] [data-testid="stCaptionContainer"] p,
   div[data-testid="stAppViewContainer"] [data-testid="stCaptionContainer"] span {

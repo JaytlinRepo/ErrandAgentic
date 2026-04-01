@@ -1,0 +1,19 @@
+## Time Window Constraints
+If stops include time windows like before 5pm or after school retrieval should emphasize anchor and buffer heuristics. Hard time windows must be treated as fixed constraints not optimization targets. Soft preferences can be treated as optimization targets.
+
+## Event and Sports Day Deference
+If the user mentions events, sports, or festivals retrieval should suggest checki
+---
+# Busy hours and timing
+---
+## Curbside Pickup Timing
+Curbside pickup requires arriving within a specific window, usually 15 to 30 minutes after notification. Late arrival can result in order being returned to store inventory. Treat curbside pickup windows as hard time constraints in sequencing. Have the app ready and order number accessible before pulling into the curbside zone.
+---
+## Appointment Services
+Appointment services like salon, vet, and service desks should anchor the entire route. Build travel buffers using OTP afternoon slowdowns. GA-400 south between 4pm and 7pm adds significant time. Treat appointments as fixed points and sequence everything else around them.
+
+## Donation and Storage Trips
+Multi-stop donation plus storage unit plus home trips need vehicle load 
+---
+## Government Errands
+DMV, county tag offices, and post offices should always be sequenced first. They have the strictest hours, longest unpredictable waits, and often require appointments. A government errand that gets missed means rescheduling days out. Treat them as the highest priority anchor in any errand sequence.

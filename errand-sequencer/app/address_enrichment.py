@@ -7,6 +7,17 @@ import re
 from guardrails.parsing import split_paragraph_into_errands
 from tools.maps import get_place_address_impl, normalize_place_search_query
 
+# Strip anything from the first "Resolved stop addresses" heading through end of reply
+# (model often echoes a half-baked block; we append one canonical markdown section).
+_TRAILING_RESOLVED_SECTION = re.compile(
+    r"(?is)"
+    r"\n+"
+    r"(?:---\s*)?"
+    r"\*{0,2}\s*Resolved stop addresses\s*\*{0,2}"
+    r"\s*\n?"
+    r"[\s\S]*$"
+)
+
 
 def _coord_hint_for_bias(starting_location_note: str | None) -> str:
     n = (starting_location_note or "").strip()
@@ -26,7 +37,7 @@ def _is_home_line(line: str) -> bool:
 
 
 def _strip_leading_prose(s: str) -> str:
-    s = s.strip()
+    s = s.strip().strip(' "\'"“”')
     m = re.search(r"\b(?:want|wanna)\s+to\s+go\s+to\b", s, flags=re.I)
     if m:
         s = s[m.end() :].strip()
@@ -42,7 +53,22 @@ def _strip_leading_prose(s: str) -> str:
         s,
         flags=re.I,
     )
-    return s.strip()
+    return s.strip().strip(' "\'"“”')
+
+
+def _safe_bullet_label(raw: str, *, label: str) -> str:
+    """Avoid broken markdown / pasted addresses inside the bold label."""
+    s = (label or "").replace("\n", " ").replace("**", "").strip()
+    s = s.strip(' "\'"“”')
+    # Model sometimes concatenates "errand: 123 Main St" into the label — keep errand part only.
+    if re.search(r"\d{3,5}\s+[A-Za-z0-9]", s):
+        cut = re.search(r":\s*\d", s)
+        if cut:
+            s = s[: cut.start()].strip().strip(": ").strip(' "\'"')
+            s = _strip_leading_prose(s)
+    if len(s) > 100:
+        s = s[:97].rstrip() + "..."
+    return s if s else _strip_leading_prose(raw)[:80]
 
 
 def _to_place_query(line: str) -> str:
@@ -68,7 +94,8 @@ def _expand_lines_for_addresses(lines: list[str]) -> list[str]:
 
 def _bullet_label(raw: str) -> str:
     s = _strip_leading_prose(raw)
-    return s if s else raw.strip()
+    t = s if s else raw.strip()
+    return _safe_bullet_label(raw, label=t)
 
 
 def _extract_street_from_tool_out(text: str) -> str:
@@ -87,13 +114,9 @@ def append_resolved_stop_addresses(
     cache: dict[str, str] | None = None,
 ) -> str:
     """Append a markdown block with one resolved address per non-home errand line."""
-    # Keep only one canonical section even if model already emitted variants.
-    reply = re.sub(
-        r"\n*---\s*\*\*Resolved stop addresses\*\*[\s\S]*$",
-        "",
-        reply or "",
-        flags=re.IGNORECASE,
-    ).rstrip()
+    reply = (reply or "").rstrip()
+    reply = _TRAILING_RESOLVED_SECTION.sub("", reply).rstrip()
+    reply = re.sub(r"\n\*\*\s*\n*$", "", reply, flags=re.IGNORECASE).rstrip()
     lines = _expand_lines_for_addresses(list(errand_lines or []))
     if not lines:
         return reply

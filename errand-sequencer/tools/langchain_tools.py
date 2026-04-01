@@ -85,8 +85,9 @@ def get_place_address(place_query: str, near_coordinates: str = "") -> str:
 def get_hours(place_query: str) -> str:
     """Look up opening hours and whether a place is open now (Google Places).
 
-    Use for questions like when a store closes or if it is open. Requires
-    `GOOGLE_MAPS_API_KEY` with Places API enabled.
+    Call **before** publishing concrete clock-time ETAs for retail, food, warehouse clubs,
+    pharmacies, or services with closing times—especially in the evening—so routing never
+    assumes a stop is open. Also use when the user asks about hours or open-now.
 
     Args:
         place_query: Business name, chain + area, or street address.

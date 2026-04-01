@@ -1,0 +1,3 @@
+I need to check store hours immediately—it's 10:04 PM, and both Costco and Whole Foods are retail/warehouse stops that may be closed.
+{'type': 'tool_use', 'name': 'get_hours', 'input': {'place_query': 'Costco Kennesaw GA'}, 'id': 'tooluse_pov3UBYuunFRCySFlrUagu'}
+{'type': 'tool_use', 'name': 'get_hours', 'input': {'place_query': 'Whole Foods Buckhead Atlanta GA'}, 'id': 'tooluse_a6rYzWUCJDwfycFjGd2aGV'}

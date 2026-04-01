@@ -1,0 +1,142 @@
+--- System ---
+You are an errand sequencing assistant with access to real-world tools.
+
+**Tool calling:** Use the tool API only. Do not paste raw JSON, tool parameters, or {"name": ...} blobs in your reply to the user.
+**Routing:** get_travel_time and get_directions require both origin and destination. If the user message includes "Starting location context for routing:", that value is the user’s **current** start (GPS or typed address).
+- **First** routing call in a turn: set **origin** to that starting location exactly; set **destination** to the **first** stop in the planned order (so you report distance/duration **from the user’s current position to their first errand**). Do **not** use the first errand as **origin** while the user is still starting from the shared starting location.
+- **Later** legs: origin is the previous stop (or the prior leg’s destination), destination is the next stop.
+For big-box or chain stops, pass a clear name (e.g. "Target store", "Cold Stone Creamery")—single words like "target" are ambiguous; the tools normalize common chains when possible.
+
+Use tools when they clearly help answer the user — do not call tools for every reply.
+- get_travel_time: quick duration/distance between two stops (Distance Matrix). Every response ends with a **STREET_ADDRESSES** block — use those address lines in your final itinerary.
+- get_directions: short route summary with key steps when needed; do **not** paste all step-by-step directions unless the user explicitly asks for directions.
+- get_place_address: look up **one** stop’s formatted street address (Places). Use this for each named stop so the itinerary includes full addresses.
+- get_hours: whether a business is open now / weekly hours (Places). Only call when the user asks about hours/open-now/closing, or timing depends on store hours.
+- get_weather: current conditions (Open-Meteo; **no API key** — never tell the user weather failed due to a missing key). Only call when weather affects sequencing or when asked.
+
+**Using tool output:** Include concrete facts (times, distances, °C, humidity, hours) but **summarize** them for humans. Do not paste raw tool dumps, raw "Query:" lines, or full weekly-hour tables unless the user asked for that detail. Do not claim tools are unavailable or lack API keys unless the tool message explicitly says so (e.g. Google quota / REQUEST_DENIED).
+
+**Addresses (mandatory):** Include full street addresses for each stop. Use values from **STREET_ADDRESSES** / **STREET_ADDRESS** tool lines, but format them cleanly in your own itinerary bullets (not as raw tool text). For **home** or **return home**, use the **Human-readable address** line when present; otherwise use the Starting location context value. If a lookup fails, say so—do **not** invent street numbers.
+
+**User-facing labels:** Describe the first leg using **Current Location** (not the words "starting location"). When a **Human-readable address** line exists, mention it with **Current Location** on the first leg (e.g. "From **Current Location** (full address) to …" or "Travel time from **Current Location** to …"). This matches the app UI; do not tell the user "from starting location" in plain language.
+
+If a Google Maps tool fails, say so briefly and still give practical advice.
+When the user message includes "Current local time at request:", anchor the schedule to **that** time as **now**:
+- never suggest leaving or arriving **before** that time; you may suggest **later** starts for traffic, peak hours, or hours of operation,
+- **never** output **“now − X minutes”**, **“now minus …”**, or **“now + X minutes”** for ETAs; use a concrete local clock time **≥ now** instead,
+- estimate arrival windows per stop using travel-time tool results from **now** forward,
+- do **not** label a listed errand as “(starting location)” unless the **Starting location context** text clearly names that same place; GPS or address starts are not the same as a named stop unless they match,
+- mention if order reduces backtracking.
+Never duplicate a stop in the final itinerary. Visit each requested errand once unless the user explicitly asks for repeats.
+
+**Stops (no hallucinations):** Only plan stops that match the user's listed errands (each line under **My errands**). Do not add clothing stores, banks, post offices, or other errand types unless the user listed them. For vague items ("get food", "grocery store"), keep them as food + grocery—do not substitute unrelated categories.
+
+**Tools:** Never call get_hours with an empty place name or get_weather with an empty location. Use a concrete chain + neighborhood or address from the errand text, or the Starting location context for weather when no city is named. Describe failures using the tool's returned text—do not invent error names like "missing query parameter."
+
+Default response format (keep short):
+1) A one-sentence recommendation of stop order.
+2) 1 bullet per leg: `From -> To`, travel time, ETA.
+3) `Addresses:` with one bullet per stop, each full street address.
+4) Optional 1 short note for risk (traffic/open hours) only if relevant.
+
+Avoid long paragraphs. Avoid repeating the same travel time twice.
+
+Work in four phases (you may weave them together in one reply, but cover each):
+1) **Plan** — Parse errands, start location, "eat last" and uniqueness constraints.
+2) **Research** — Call tools for hours, weather, and travel times where they reduce uncertainty.
+3) **Sequence** — Propose an order visiting each requested stop once unless the user asked otherwise.
+4) **Route** — Give practical leg timing; use get_directions when turn-by-turn or route shape matters.
+
+When the user message includes a **Knowledge excerpts** section, use those notes for qualitative planning (parking, typical busy times, neighborhood routing patterns). Treat them as hints, not live data—still prefer tools for current hours, weather, and drive times. Do not cite sources by filename unless helpful; do not invent facts not supported by excerpts or tools.
+
+**Busy windows vs concrete times:** If excerpts mention typical busy periods (e.g. weekday late afternoon), your **concrete** arrival or departure times must either fall **outside** those windows or you must **explicitly** say you are accepting peak traffic (e.g. user must leave now). Do not say "go earlier to avoid the rush" and then schedule arrivals inside the same rush window you described.
+
+When the message includes **Saved preferences from past sessions**, treat those as user-specific memory from earlier runs. Prefer them for tone and standing preferences (e.g. avoid certain stores, typical timing). If they conflict with the current errand list or tools, follow the current list and live tool results.
+
+--- Human ---
+Knowledge excerpts (from local knowledge base):
+[1] (source: guardrails.md)
+## Time Window Constraints
+If stops include time windows like before 5pm or after school retrieval should emphasize anchor and buffer heuristics. Hard time windows must be treated as fixed constraints not optimization targets. Soft preferences can be treated as optimization targets.
+
+## Event and Sports Day Deference
+If the user mentions events, sports, or festivals retrieval should suggest checking live traffic even when RAG gives general patterns. General patterns are baselines. Live conditions during events are unpredictable and always require live Maps data to handle correctly.
+
+[2] (source: busy_hours.md)
+# Busy hours and timing
+
+[3] (source: parking_friction.md)
+## Curbside Pickup Timing
+Curbside pickup requires arriving within a specific window, usually 15 to 30 minutes after notification. Late arrival can result in order being returned to store inventory. Treat curbside pickup windows as hard time constraints in sequencing. Have the app ready and order number accessible before pulling into the curbside zone.
+
+[4] (source: errand_playbooks.md)
+## Appointment Services
+Appointment services like salon, vet, and service desks should anchor the entire route. Build travel buffers using OTP afternoon slowdowns. GA-400 south between 4pm and 7pm adds significant time. Treat appointments as fixed points and sequence everything else around them.
+
+## Donation and Storage Trips
+Multi-stop donation plus storage unit plus home trips need vehicle load order planning. Empty the car before filling it again. Sequence donation dropoffs before any pickup stops so the vehicle has capacity.
+
+[5] (source: atlanta_traffic_patterns.md)
+## GA-400 South
+GA-400 southbound between Alpharetta and the I-285 interchange adds significant delay between 4pm and 7pm on weekdays. OTP north stops in Roswell, Alpharetta, and Cumming should be completed before 3pm or after 7pm when possible.
+
+## Braves Game Days
+Braves game days spike traffic near Truist Park and Cumberland. Avoid Cobb to Midtown round trips on game evenings. Check the Braves schedule before sequencing stops in the Cumberland corridor on weekday evenings and weekend afternoons.
+
+Saved preferences from past sessions:
+[1]
+Departure time: now + 10 minutes (from current local time)
+
+[2]
+Target in Austell - Departure time: now + 18 minutes
+
+[3]
+1. Timing: Late evening/night (post 9 PM)
+
+[4]
+No specific timing preference was mentioned, but the estimated arrival times are provided.
+
+[5]
+Timing: I prefer to go during off-peak hours
+
+My errands:
+Current local time at request: 2026-03-31 10:01 PM EDT (ISO: 2026-03-31T22:01:35-04:00)
+Scheduling rules (follow exactly):
+- **Now** is the moment this request was sent. Treat it as the earliest realistic time the user can leave **Current Location** (the Starting location context value).
+- Do **not** propose any **departure** or **arrival** time **earlier** than that clock time (no “start at 9:00 PM” if the current time is already 9:14 PM).
+- **Never** write windows like **“now − 3 minutes”**, **“now minus …”**, or any phrasing that implies arriving **before** the current time. That is invalid. Prefer a concrete **clock time on or after now** (e.g. 6:42 PM local) instead of expressions like **now + N minutes**.
+- First stop after leaving **Current Location** (from the context line): arrival is **no earlier than now + travel time** for that leg. If travel time is ~0, say **now** or **upon arrival**, not a negative offset.
+- You **may** propose a **later** departure or arrival when justified (heavy traffic, peak hours, store not yet open, buffer time)—say why.
+- Build arrival windows **forward** from **now** plus travel times from tools.
+
+Starting location context for routing: 33.773282,-84.665579
+Human-readable address for this starting point (use when the user says **home** or **return home**; show this full address in the itinerary for that leg): 2744 Jordan Ln, Lithia Springs, GA 30122, USA
+
+Use this as the starting point when estimating travel efficiency. For the **first** drive leg, routing tools must use this value as **origin** and the **first errand** as **destination** (distance/time from your current position to your first stop—not from the first stop to the second).
+
+Errands:
+"I need to go to Costco in Kennesaw and Whole Foods in Buckhead"
+
+Hard constraint:
+- Build a route that visits each listed errand exactly once.
+- Do not duplicate stops in the final itinerary.
+- Exact errands to cover:
+- "I need to go to Costco in Kennesaw and Whole Foods in Buckhead"
+
+Planned stop order (must follow exactly unless a tool reports impossible routing):
+1. "I need to go to Costco in Kennesaw and Whole Foods in Buckhead"
+- Keep this order and provide travel-time-based ETAs for each leg.
+
+--- AI ---
+I'll help you sequence these two errands efficiently. Let me first look up the exact addresses and then calculate travel times from your current location.
+{'type': 'tool_use', 'name': 'get_place_address', 'input': {'place_query': 'Costco Kennesaw GA', 'near_coordinates': '33.773282,-84.665579'}, 'id': 'tooluse_TWJ48tGKHEzEfWaoWMzvMc'}
+{'type': 'tool_use', 'name': 'get_place_address', 'input': {'place_query': 'Whole Foods Buckhead GA', 'near_coordinates': '33.773282,-84.665579'}, 'id': 'tooluse_SmtcvUy5KmFtCcdkQ4Twiu'}
+
+--- Tool ---
+Query: Costco Kennesaw GA
+STREET_ADDRESS (required — paste into your itinerary): 645 Ernest W Barrett Pkwy NW, Kennesaw, GA 30144, USA
+
+
+--- Tool ---
+Query: Whole Foods Buckhead GA
+STREET_ADDRESS (required — paste into your itinerary): 77 W Paces Ferry Rd NW, Atlanta, GA 30305, USA

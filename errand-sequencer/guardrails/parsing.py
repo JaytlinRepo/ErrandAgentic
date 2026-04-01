@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import re
 
+# Two-stop prose like "Costco in Kennesaw and Whole Foods in Buckhead" (single "and", no commas).
+_TWO_STOP_CHAINS = re.compile(
+    r"(?i)\b(costco|whole\s+foods|sam'?s\s+club|target|walmart|kroger|publix|trader\s*joe'?s?|aldi|cvs|walgreens)\b"
+)
+
 
 def _split_trailing_home(s: str) -> list[str] | None:
     """Split prose that ends with '... and home' or '... and then home' into stops + 'home'.
@@ -81,6 +86,13 @@ def split_paragraph_into_errands(text: str) -> list[str]:
         if len(parts) >= 3:
             return parts
 
+    # 4b) Two chain stores joined by one "and", e.g. "… Costco in Kennesaw and Whole Foods in Buckhead"
+    if s.count(" and ") == 1 and len(_TWO_STOP_CHAINS.findall(s)) >= 2:
+        left, right = re.split(r"\s+and\s+", s, maxsplit=1, flags=re.I)
+        left, right = left.strip().strip(".;"), right.strip().strip(".;")
+        if len(left) >= 10 and len(right) >= 8:
+            return [left, right]
+
     # 5) Multiple sentences as separate stops
     sents = re.split(r"(?<=[.!?])\s+", s)
     if len(sents) >= 2:
@@ -104,6 +116,8 @@ def _should_expand_paragraph_line(line: str) -> bool:
     if re.search(r",\s+and\s+", line, flags=re.I):
         return True
     if line.count(",") >= 2:
+        return True
+    if line.count(" and ") == 1 and len(_TWO_STOP_CHAINS.findall(line)) >= 2:
         return True
     if len(re.findall(r"[.!?]", line)) >= 2:
         return True

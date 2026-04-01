@@ -29,6 +29,9 @@ BEDROCK_AGENT_MODEL_ID = os.environ.get(
 )
 AWS_DEFAULT_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
+# MLflow Layer 2 — see configs/ml_tracker.py. Default store: SQLite at data/mlflow/tracking.db
+# (enables MLflow Overview). Override with MLFLOW_TRACKING_URI; toggle MLFLOW_ENABLED, MLFLOW_LOG_RAG.
+
 # Google Maps Platform (Places, Distance Matrix; Directions available for future use)
 # Set in `.env` as GOOGLE_MAPS_API_KEY=... (never hard-code keys in source).
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
@@ -36,7 +39,11 @@ GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
 # RAG (Chroma + sentence-transformers)
 _RAG_ROOT = _ENV_DIR / "data"
 RAG_RAW_DIR = Path(os.environ.get("RAG_RAW_DIR", str(_RAG_ROOT / "raw")))
-RAG_CHROMA_DIR = Path(os.environ.get("RAG_CHROMA_DIR", str(_RAG_ROOT / "chroma_db")))
+# Local disk path: CHROMA_DB_PATH wins (alias), else RAG_CHROMA_DIR, else data/chroma_db/
+RAG_CHROMA_DIR = Path(
+    os.environ.get("CHROMA_DB_PATH")
+    or os.environ.get("RAG_CHROMA_DIR", str(_RAG_ROOT / "chroma_db"))
+)
 RAG_COLLECTION = os.environ.get("RAG_COLLECTION", "errand_knowledge")
 # One collection; chunk metadata distinguishes curated knowledge vs per-user memory.
 RAG_KIND_GENERAL = "general"
@@ -59,7 +66,8 @@ USER_MEMORY_EXTRACT_ENABLED = os.environ.get("USER_MEMORY_EXTRACT_ENABLED", "tru
 MAX_CHAT_HISTORY_TURNS = int(os.environ.get("MAX_CHAT_HISTORY_TURNS", "10"))
 RUNTIME_DIR = Path(os.environ.get("RUNTIME_DIR", str(_ENV_DIR / "data" / "runtime")))
 
-# Chroma Cloud (optional). If CHROMA_API_KEY is set, retriever/ingest use CloudClient instead of local disk.
+# Chroma Cloud vs local disk — set CHROMA_MODE=cloud (recommended with Cloud) or local.
+# If CHROMA_MODE is unset, falls back to legacy: Cloud when CHROMA_API_KEY is set, else local.
 CHROMA_API_KEY = (
     os.environ.get("CHROMA_API_KEY", "").strip()
     or os.environ.get("CHROMA_CLOUD_API_KEY", "").strip()
@@ -69,3 +77,11 @@ CHROMA_TENANT = os.environ.get("CHROMA_TENANT", "").strip() or None
 CHROMA_DATABASE = os.environ.get("CHROMA_DATABASE", "").strip() or None
 # Used when CHROMA_API_KEY + CHROMA_TENANT are set but CHROMA_DATABASE is omitted (matches auto-created DB).
 CHROMA_DATABASE_DEFAULT = os.environ.get("CHROMA_DATABASE_DEFAULT", "errand_rag").strip()
+
+_chroma_mode_raw = os.environ.get("CHROMA_MODE", "").strip().lower()
+if _chroma_mode_raw in ("cloud", "1", "true", "yes"):
+    CHROMA_USE_CLOUD = True
+elif _chroma_mode_raw in ("local", "disk", "persistent", "0", "false", "no"):
+    CHROMA_USE_CLOUD = False
+else:
+    CHROMA_USE_CLOUD = bool(CHROMA_API_KEY)

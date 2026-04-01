@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from configs.settings import (
     RAG_CHUNK_OVERLAP,
@@ -40,7 +45,7 @@ def ingest_raw_dir(
         reset_collection()
     mode = chroma_connection_mode()
     if mode == "chroma_cloud":
-        print("Ingest target: Chroma Cloud (CHROMA_API_KEY is set).")
+        print("Ingest target: Chroma Cloud (CHROMA_MODE=cloud or API key with default mode).")
     else:
         print(f"Ingest target: local persistent Chroma at {RAG_CHROMA_DIR.resolve()}")
     col = get_collection()

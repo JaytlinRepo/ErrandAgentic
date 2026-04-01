@@ -1,0 +1,3 @@
+Now let me get travel times for both legs:
+{'type': 'tool_use', 'name': 'get_travel_time', 'input': {'origin': '33.773282,-84.665579', 'destination': '645 Ernest W Barrett Pkwy NW, Kennesaw, GA 30144, USA', 'mode': 'driving'}, 'id': 'tooluse_56qLUDZYQJT7kzk7wpo9lY'}
+{'type': 'tool_use', 'name': 'get_travel_time', 'input': {'origin': '645 Ernest W Barrett Pkwy NW, Kennesaw, GA 30144, USA', 'destination': '77 W Paces Ferry Rd NW, Atlanta, GA 30305, USA', 'mode': 'driving'}, 'id': 'tooluse_zrm9AXwY8KICz20QBfmGwA'}

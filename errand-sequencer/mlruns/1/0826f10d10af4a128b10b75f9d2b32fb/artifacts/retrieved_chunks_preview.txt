@@ -1,0 +1,9 @@
+Departure time: now + 10 minutes (from current local time)
+---
+Target in Austell - Departure time: now + 18 minutes
+---
+1. Timing: Late evening/night (post 9 PM)
+---
+No specific timing preference was mentioned, but the estimated arrival times are provided.
+---
+Timing: I prefer to go during off-peak hours

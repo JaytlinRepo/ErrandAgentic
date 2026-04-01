@@ -1,0 +1,23 @@
+Extract zero to five short, standalone facts about the USER's standing preferences for errands (stores, timing, parking, dietary restrictions, places to avoid). Ignore generic routing advice. One fact per line; no bullets or numbers.
+If nothing is worth remembering for future sessions, reply with exactly: NONE
+
+User message:
+"I need to go to Costco in Kennesaw and Whole Foods in Buckhead"
+
+Assistant reply:
+**Recommended order: Costco (Kennesaw) first, then Whole Foods (Buckhead).**
+
+This route totals ~63 minutes of driving and minimizes backtracking. Here's your itinerary:
+
+1. **From Current Location to Costco Kennesaw** — 38 mins  
+   Depart 9:55 PM, arrive ~10:33 PM
+
+2. **From Costco to Whole Foods Buckhead** — 25 mins  
+   Depart ~10:33 PM, arrive ~10:58 PM
+
+**Addresses:**
+- **Current Location:** 2744 Jordan Ln, Lithia Springs, GA 30122, USA
+- **Costco:** 645 Ernest W Barrett Pkwy NW, Kennesaw, GA 30144, USA
+- **Whole Foods:** 77 W Paces Ferry Rd NW, Atlanta, GA 30305, USA
+
+**Note:** Both stores should be open at these late evening times (Costco typically closes at 10 PM on Tuesdays, Whole Foods at 10 PM). Verify store hours before departing if timing is tight, as you'll arrive near closing.
