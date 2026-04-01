@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -21,6 +23,7 @@ from agent.prompts import (
     TOOL_AGENT_SYSTEM,
     USER_MEMORY_INSTRUCTION,
 )
+from configs.ml_tracker import get_mlflow_tracker
 from configs.settings import (
     AWS_DEFAULT_REGION,
     BEDROCK_AGENT_MODEL_ID,
@@ -32,6 +35,68 @@ from configs.settings import (
 from tools.langchain_tools import ERRAND_TOOLS
 
 _MAX_TOOL_ROUNDS = 12
+
+
+def _stringify_message_content(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+            else:
+                parts.append(str(block))
+        return "".join(parts)
+    return str(content or "")
+
+
+def _text_from_ai_message(msg: AIMessage) -> str:
+    return _stringify_message_content(getattr(msg, "content", ""))
+
+
+def _messages_preview(messages: list, max_chars: int = 48000) -> str:
+    parts: list[str] = []
+    for m in messages:
+        label = type(m).__name__.replace("Message", "")
+        parts.append(f"--- {label} ---\n{_stringify_message_content(getattr(m, 'content', ''))}")
+    out = "\n\n".join(parts)
+    return out[:max_chars]
+
+
+def _tokens_from_ai_message(msg: AIMessage) -> tuple[int, int]:
+    um = getattr(msg, "usage_metadata", None)
+    if isinstance(um, dict):
+        return int(um.get("input_tokens") or 0), int(um.get("output_tokens") or 0)
+    return 0, 0
+
+
+def _log_converse_round(
+    *,
+    tracker,
+    model_id: str,
+    messages: list,
+    ai: AIMessage,
+    latency_ms: float,
+) -> float:
+    in_t, out_t = _tokens_from_ai_message(ai)
+    tool_calls = getattr(ai, "tool_calls", None) or []
+    tools_used = [
+        str(tc.get("name"))
+        for tc in tool_calls
+        if isinstance(tc, dict) and tc.get("name")
+    ]
+    tracker.log_model_call(
+        model_type="agent_converse",
+        model_id=model_id,
+        prompt=_messages_preview(messages),
+        response=_text_from_ai_message(ai)[:50000],
+        input_tokens=in_t,
+        output_tokens=out_t,
+        latency_ms=latency_ms,
+        tools_used=tools_used or None,
+    )
+    return tracker.estimate_cost(model_id, in_t, out_t)
 
 
 def _retrieve_knowledge_block(user_text: str) -> str:
@@ -121,82 +186,117 @@ def run_errand_agent_with_tools(
         history = history[-MAX_CHAT_HISTORY_TURNS :]
 
     user_block = errand_list.strip() if errand_list else "(no errands listed)"
-    rag_block = _retrieve_knowledge_block(user_block)
-    mem_block = _retrieve_user_memory_block(user_block, user_id)
-    include_rag = bool(rag_block.strip())
-    include_user_memory = bool(mem_block.strip())
-    include_conversation = bool(history)
+    tracker = get_mlflow_tracker()
+    raw_for_log = (errand_list or "").strip() or user_block
 
-    human_parts: list[str] = []
-    if rag_block.strip():
-        human_parts.append("Knowledge excerpts (from local knowledge base):\n" + rag_block.strip())
-    if mem_block.strip():
-        human_parts.append("Saved preferences from past sessions:\n" + mem_block.strip())
-    human_parts.append("My errands:\n" + user_block)
-    human_content = "\n\n".join(human_parts)
-    default_origin = parse_default_origin_from_human_block(human_content)
+    with tracker.chat_session_context(raw_user_input=raw_for_log):
+        rag_block = _retrieve_knowledge_block(user_block)
+        mem_block = _retrieve_user_memory_block(user_block, user_id)
+        include_rag = bool(rag_block.strip())
+        include_user_memory = bool(mem_block.strip())
+        include_conversation = bool(history)
 
-    messages: list = [
-        SystemMessage(
-            content=_build_system_prompt(
-                include_rag=include_rag,
-                include_user_memory=include_user_memory,
-                include_conversation=include_conversation,
+        human_parts: list[str] = []
+        if rag_block.strip():
+            human_parts.append(
+                "Knowledge excerpts (from local knowledge base):\n" + rag_block.strip()
             )
-        ),
-    ]
-    for usr, ast in history:
-        messages.append(HumanMessage(content=usr))
-        messages.append(AIMessage(content=ast))
-    messages.append(HumanMessage(content=human_content))
+        if mem_block.strip():
+            human_parts.append("Saved preferences from past sessions:\n" + mem_block.strip())
+        human_parts.append("My errands:\n" + user_block)
+        human_content = "\n\n".join(human_parts)
+        default_origin = parse_default_origin_from_human_block(human_content)
 
-    ai: AIMessage = llm_with_tools.invoke(messages)
-    ai = normalize_ai_text_content(ai)
-    ai = repair_ai_message_for_embedded_tools(ai)
-    messages.append(ai)
+        messages: list = [
+            SystemMessage(
+                content=_build_system_prompt(
+                    include_rag=include_rag,
+                    include_user_memory=include_user_memory,
+                    include_conversation=include_conversation,
+                )
+            ),
+        ]
+        for usr, ast in history:
+            messages.append(HumanMessage(content=usr))
+            messages.append(AIMessage(content=ast))
+        messages.append(HumanMessage(content=human_content))
 
-    rounds = 0
-    while getattr(ai, "tool_calls", None) and rounds < _MAX_TOOL_ROUNDS:
-        rounds += 1
-        routing_idx = 0
-        for tc in ai.tool_calls:
-            name = tc.get("name")
-            args = tc.get("args") or {}
-            force_first = False
-            if name in _ROUTING_TOOL_NAMES and (default_origin or "").strip():
-                routing_idx += 1
-                if routing_idx == 1:
-                    force_first = True
-            args = inject_routing_origin(name, args, default_origin, force_first_leg=force_first)
-            tid = tc.get("id") or ""
-            tool = tool_map.get(name)
-            if tool is None:
-                out = f"Unknown tool: {name}"
-            else:
-                try:
-                    out = tool.invoke(args)
-                except Exception as e:
-                    out = f"Error running {name}: {e}"
-            messages.append(ToolMessage(content=str(out), tool_call_id=tid))
-        ai = llm_with_tools.invoke(messages)
+        session_cost = 0.0
+
+        t0 = time.perf_counter()
+        ai: AIMessage = llm_with_tools.invoke(messages)
+        lat0 = (time.perf_counter() - t0) * 1000.0
         ai = normalize_ai_text_content(ai)
         ai = repair_ai_message_for_embedded_tools(ai)
+        session_cost += _log_converse_round(
+            tracker=tracker,
+            model_id=model,
+            messages=messages,
+            ai=ai,
+            latency_ms=lat0,
+        )
         messages.append(ai)
 
-    if getattr(ai, "tool_calls", None):
-        reply = (
-            (ai.content or "").strip()
-            or "The model kept requesting tools without a final summary; try a smaller question or another model."
-        )
-    else:
-        reply = (ai.content or "").strip()
-    reply = strip_leaked_tool_json(reply)
+        rounds = 0
+        while getattr(ai, "tool_calls", None) and rounds < _MAX_TOOL_ROUNDS:
+            rounds += 1
+            routing_idx = 0
+            for tc in ai.tool_calls:
+                name = tc.get("name")
+                args = tc.get("args") or {}
+                force_first = False
+                if name in _ROUTING_TOOL_NAMES and (default_origin or "").strip():
+                    routing_idx += 1
+                    if routing_idx == 1:
+                        force_first = True
+                args = inject_routing_origin(name, args, default_origin, force_first_leg=force_first)
+                tid = tc.get("id") or ""
+                tool = tool_map.get(name)
+                if tool is None:
+                    out = f"Unknown tool: {name}"
+                else:
+                    try:
+                        out = tool.invoke(args)
+                    except Exception as e:
+                        out = f"Error running {name}: {e}"
+                messages.append(ToolMessage(content=str(out), tool_call_id=tid))
+            t1 = time.perf_counter()
+            ai = llm_with_tools.invoke(messages)
+            lat1 = (time.perf_counter() - t1) * 1000.0
+            ai = normalize_ai_text_content(ai)
+            ai = repair_ai_message_for_embedded_tools(ai)
+            session_cost += _log_converse_round(
+                tracker=tracker,
+                model_id=model,
+                messages=messages,
+                ai=ai,
+                latency_ms=lat1,
+            )
+            messages.append(ai)
 
-    extract_msg = (latest_user_message or "").strip() or user_block[:2000]
-    _maybe_persist_user_insights(
-        user_message=extract_msg,
-        assistant_reply=reply,
-        user_id=user_id,
-        persist_memory=persist_memory,
-    )
-    return reply
+        if getattr(ai, "tool_calls", None):
+            reply = (
+                (ai.content or "").strip()
+                or "The model kept requesting tools without a final summary; try a smaller question or another model."
+            )
+        else:
+            reply = (ai.content or "").strip()
+        reply = strip_leaked_tool_json(reply)
+
+        extract_msg = (latest_user_message or "").strip() or user_block[:2000]
+        _maybe_persist_user_insights(
+            user_message=extract_msg,
+            assistant_reply=reply,
+            user_id=user_id,
+            persist_memory=persist_memory,
+        )
+        errand_lines = [ln.strip() for ln in user_block.splitlines() if ln.strip()]
+        if not errand_lines:
+            errand_lines = [user_block[:500]]
+        tracker.finalize_chat_session(
+            full_human_message=human_content,
+            errands=errand_lines[:50],
+            result=reply,
+            total_cost=session_cost,
+        )
+        return reply

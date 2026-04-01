@@ -11,6 +11,7 @@ dist/
 build/
 
 # Local data and model artifacts
+data/mlflow/
 data/chroma_db/*
 !data/chroma_db/.gitkeep
 data/processed/*

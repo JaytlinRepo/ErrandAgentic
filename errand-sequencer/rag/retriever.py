@@ -22,6 +22,7 @@ from configs.settings import (
     RAG_KIND_USER,
     RAG_TOP_K,
 )
+from configs.ml_tracker import get_mlflow_tracker
 from rag.embedder import embed_texts
 
 
@@ -150,6 +151,15 @@ def _retrieve_by_kind(
             lines.append(f"[{i}] ({source_label}: {src})\n{doc.strip()}")
         else:
             lines.append(f"[{i}]\n{doc.strip()}")
+    distances = (res.get("distances") or [[]])[0]
+    scores: list[float] | None = None
+    if distances:
+        scores = [1.0 / (1.0 + float(d)) for d in distances]
+    get_mlflow_tracker().log_rag_retrieval(
+        query=query,
+        chunks_retrieved=list(docs),
+        scores=scores,
+    )
     return "\n\n".join(lines)
 
 

@@ -70,7 +70,18 @@ _GEO_HTML = """
 _REPLACE_STOPS_PATTERNS = (
     r"^\s*i need to\b",
     r"^\s*need to\b",
+    # "go to" only at line start; "I now want to go to …" needs wider phrasing:
     r"^\s*go to\b",
+    r"^\s*i\s+now\s+want\s+to\b",
+    r"^\s*i\s+want\s+to\s+go\s+to\b",
+    r"^\s*want\s+to\s+go\s+to\b",
+    r"^\s*i'?d\s+like\s+to\s+go\s+to\b",
+    r"^\s*(?:can|could)\s+i\s+go\s+to\b",
+    r"^\s*let'?s\s+go\s+to\b",
+    r"^\s*new\s+route\b",
+    r"^\s*new\s+stops\b",
+    r"^\s*switch\s+(?:to|my\s+stops)\b",
+    r"^\s*instead\b",
     r"^\s*stops?\s*[:\-]",
     r"^\s*route\b",
 )
